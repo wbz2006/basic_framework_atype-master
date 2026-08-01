@@ -4,7 +4,6 @@
 #include "bsp_can.h"
 #include "controller.h"
 #include "motor_def.h"
-#include "daemon.h"
 
 #define DM_MOTOR_CNT 4
 
@@ -36,6 +35,7 @@ typedef struct
     uint16_t Kp;
     uint16_t Kd;
 }DMMotor_Send_s;
+
 typedef struct 
 {
     DM_Motor_Measure_s measure;
@@ -50,27 +50,29 @@ typedef struct
     float pid_ref;
     Motor_Working_Type_e stop_flag;
     CANInstance *motor_can_instace;
-    DaemonInstance* motor_daemon;
     uint32_t lost_cnt;
 }DMMotorInstance;
 
 typedef enum
 {
-    DM_CMD_MOTOR_MODE = 0xfc,   // 使能,会响应指令
-    DM_CMD_RESET_MODE = 0xfd,   // 停止
-    DM_CMD_ZERO_POSITION = 0xfe, // 将当前的位置设置为编码器零位
-    DM_CMD_CLEAR_ERROR = 0xfb // 清除电机过热错误
+    DM_CMD_MOTOR_MODE = 0xfc,
+    DM_CMD_RESET_MODE = 0xfd,
+    DM_CMD_ZERO_POSITION = 0xfe,
+    DM_CMD_CLEAR_ERROR = 0xfb
 }DMMotor_Mode_e;
 
 DMMotorInstance *DMMotorInit(Motor_Init_Config_s *config);
 
 void DMMotorSetRef(DMMotorInstance *motor, float ref);
 
-void DMMotorOuterLoop(DMMotorInstance *motor,Closeloop_Type_e closeloop_type);
+void DMMotorOuterLoop(DMMotorInstance *motor, Closeloop_Type_e closeloop_type);
 
 void DMMotorEnable(DMMotorInstance *motor);
 
 void DMMotorStop(DMMotorInstance *motor);
+
 void DMMotorCaliEncoder(DMMotorInstance *motor);
-void DMMotorControlInit();
+
+void DMMotorControl(void);
+
 #endif // !DMMOTOR

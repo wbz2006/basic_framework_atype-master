@@ -94,8 +94,8 @@ void GimbalInit()
     };
         Motor_Init_Config_s loader_config = {
         .can_init_config = {
-            .can_handle = &hcan1,
-            .tx_id = 7,
+            .can_handle = &hcan2,
+            .tx_id = 1,
         },
         .controller_param_init_config = {
             .angle_PID = {
@@ -128,7 +128,7 @@ void GimbalInit()
             .close_loop_type = CURRENT_LOOP | SPEED_LOOP,
             .motor_reverse_flag = MOTOR_DIRECTION_NORMAL, // 注意方向设置为拨盘的拨出的击发方向
         },
-        .motor_type = M2006 // 英雄使用m3508
+        .motor_type = M3508 // 英雄使用m3508
     };
     // 电机对total_angle闭环,上电时为零,会保持静止,收到遥控器数据再动
     yaw_motor = DJIMotorInit(&yaw_config);
