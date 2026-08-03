@@ -4,7 +4,7 @@
 
 https://gitee.com/hnuyuelurm/basic_framework_atype
 
-当前工程基于 STM32F427 A 板生成，时钟频率暂保持 168MHz，与原 C 板示例一致，后续可根据 A 板配置再调整到 180MHz。
+当前工程基于 STM32F427 A 板生成，时钟频率暂保持 168MHz。工程结构已经切换为 CubeMX 生成的 `Core/Inc`、`Core/Src` 目录，并使用 `STM32F427IIHx_FLASH.ld`、`startup_stm32f427xx.s` 和根目录 `Makefile` 构建。
 
 IMU 方案已由原工程的 `BMI088 + IST8310` 替换为 A 板上的 `MPU6500`。当前 `modules/mpu6500` 中保留了上层惯导接口：
 
@@ -16,9 +16,29 @@ IMU 方案已由原工程的 `BMI088 + IST8310` 替换为 A 板上的 `MPU6500`�
 
 MPU6500 上电后需要预热，当前工程中保留约 15 秒预热流程。调试姿态数据时，应等待预热结束后再观察 `Pitch`、`Roll`、`Yaw` 等输出。
 
-目前仅验证 DJI 电机和官方 DR16 遥控器。DR16/DBUS 应接 A 板 DBUS 口，对应 `USART1_RX/PB7`，代码中遥控器初始化应使用 `RemoteControlInit(&huart1)`。视觉通信当前示例使用 `VisionInit(&huart6)`，实际使用时需要确认接线和波特率。
+当前关键外设映射：
+
+- DR16/DBUS：A 板 DBUS 口，对应 `USART1_RX/PB7`，代码中使用 `RemoteControlInit(&huart1)`。
+- 视觉通信：当前使用 `VisionInit(&huart8)`，对应 `UART8 PE1/PE0`，需确认视觉端波特率为 115200。
+- 裁判系统：当前使用 `UITaskInit(&huart6, &ui_data)`，对应 `USART6 PG14/PG9`。
+- CAN1：`PD0/PD1`。
+- CAN2：`PB12/PB13`。
+- MPU6500：`SPI5 PF7/PF8/PF9`，片选 `PF6`。
+- MPU6500 加热 PWM：`TIM3_CH2/PB5`。
+- 蜂鸣器：`TIM12_CH1/PH6`。
+
+当前 BSP 层已经能支撑新工程启用的主要功能，但并不是和原 C 板工程完全通用的 BSP。需要特别注意：
+
+- `bsp/usart` 注册后默认使用 `HAL_UARTEx_ReceiveToIdle_DMA()`，被注册串口必须配置 RX DMA。
+- `bsp/can` 仍然默认使用 `hcan1/hcan2`。
+- `bsp/pwm` 在当前工程中的语义是 `period` 单位 ms、`dutyratio` 范围 0~100；原工程为 `period` 单位 s、`dutyratio` 范围 0~1。
+- 原工程中的 `bsp/flash`、`bsp/usb`、`bsp_tools` 当前未移植到 A 板工程。
+
+本次已清理若干移植残留 warning，包括 `power_control.c`、`mpu6500.c`、`mpu6500driver.c`、`buzzer.c` 中的未使用变量，以及 `buzzer.c` 中未覆盖的 `OCTAVE_8` 分支。当前仍可能看到 `_write/_read/_lseek/_close is not implemented` 和 `LOAD segment with RWX permissions` 这类链接器提示，它们不是源码 warning，固件仍可正常生成。
 
 部分外设和模块仍保留原 C 板工程痕迹，尚未全部完成 A 板实物验证。移植或调车时，建议优先检查 CubeMX 引脚、串口/DMA 配置和 Makefile 收录路径是否与实际硬件一致。
+
+更完整的新旧工程差异、BSP/Modules 适用边界和编译记录，见根目录 [新旧工程对比记录.md](新旧工程对比记录.md)。
 
 以下为原仓库 README：
 
