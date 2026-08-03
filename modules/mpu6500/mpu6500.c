@@ -101,7 +101,6 @@ void ist8310_get_data(uint8_t* buff)
 void mpu_get_data()
 {
 	uint8_t mpu_buf[14] ={0};        /* buffer to save imu raw data */
-	uint8_t ist_buf[6] ={0};         /* buffer to save IST8310 raw data */
 	mpu_read_bytes(MPU6500_ACCEL_XOUT_H, mpu_buf, 14);
 	mpu_data.Accel[0] = ((int16_t)((mpu_buf[0]) << 8) | mpu_buf[1]) * MPU6500_ACCEL_SEN * mpu_data.AccelScale;
 

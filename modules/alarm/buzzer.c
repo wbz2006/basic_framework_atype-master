@@ -4,7 +4,6 @@
 #include "string.h"
 #include <stdlib.h>
 static PWMInstance *buzzer;
-static uint8_t idx;
 static BuzzzerInstance *buzzer_list[BUZZER_DEVICE_CNT] = {0};
 
 /**
@@ -85,6 +84,9 @@ void BuzzerTask()
             case OCTAVE_7:
                 PWMSetPeriod(buzzer, (float)1000/SiFreq);
                 break;
+            case OCTAVE_8:
+                PWMSetPeriod(buzzer, (float)1000/(DoFreq * 2));
+                break;
             }
             break;
         }
@@ -92,7 +94,6 @@ void BuzzerTask()
     }
     
 }
-
 
 
 

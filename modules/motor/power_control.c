@@ -15,7 +15,7 @@ static DJIMotorInstance *dji_motor_instance[DJI_MOTOR_CNT] = {NULL}; // 会在co
 static float initial_torque[4];                                      // 电机输出轴实际转矩，单位N·m
 static float A, B, C;                                                // 测试用
 static float power_control_out[4], initial_give_power[4];            // 电机输出功率
-static float chassis_max_power, chassis_power, initial_total_power = 0.0f;
+static float chassis_max_power, initial_total_power = 0.0f;
 /**
  * @brief 由于DJI电机发送以四个一组的形式进行,故对其进行特殊处理,用6个(2can*3group)can_instance专门负责发送
  *        该变量将在 DJIMotorControl() 中使用,分组在 MotorSenderGrouping()中进行

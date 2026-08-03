@@ -241,7 +241,6 @@ void mpu6500_device_init(void)
 {
   MPU_DELAY(100);
 
-	uint8_t id                       = mpu_read_byte(MPU6500_WHO_AM_I);
 	uint8_t i                        = 0;
 	uint8_t MPU6500_Init_Data[10][2] = {{ MPU6500_PWR_MGMT_1, 0x80 },     /* Reset Device */ 
 																			{ MPU6500_PWR_MGMT_1, 0x03 },     /* Clock Source - Gyro-Z */ 
