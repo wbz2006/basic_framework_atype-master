@@ -102,7 +102,6 @@ modules/remote/remote_control.c \
 modules/can_comm/can_comm.c \
 modules/message_center/message_center.c \
 modules/daemon/daemon.c \
-modules/vofa/vofa.c \
 modules/mpu6500/mpu6500.c \
 modules/mpu6500/imu_temperature.c \
 modules/alarm/buzzer.c \
@@ -243,7 +242,6 @@ C_INCLUDES =  \
 -Imodules/can_comm \
 -Imodules/message_center \
 -Imodules/daemon \
--Imodules/vofa \
 -Imodules/alarm \
 -Imodules/bluetooth \
 -Imodules/TFminiPlus \
