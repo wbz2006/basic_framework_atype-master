@@ -16,9 +16,49 @@ static Gimbal_Upload_Data_s gimbal_feedback_data; // 回传给cmd的云台状态
 static Gimbal_Ctrl_Cmd_s gimbal_cmd_recv;         // 来自cmd的控制信息
 
 
+#define JSCOPE_CH  1
+
+static char jscope_buf[1024];
+
+typedef struct {
+    float roll;
+    float pitch;
+    float yaw;
+    float gyro_x;
+    float gyro_y;
+    float gyro_z;
+} JScopeData_t;
+
+void JScope_Init(void)
+{
+    SEGGER_RTT_ConfigUpBuffer(
+        JSCOPE_CH,
+        "JScope_f4f4f4f4f4f4",
+        jscope_buf,
+        sizeof(jscope_buf),
+        SEGGER_RTT_MODE_NO_BLOCK_SKIP
+    );
+}
+
+void JScope_Send(void)
+{
+    JScopeData_t data;
+
+    data.roll = gimbal_IMU_data->Roll;
+    data.pitch = gimbal_IMU_data->Pitch;
+    data.yaw = gimbal_IMU_data->Yaw;
+    data.gyro_x = gimbal_IMU_data->Gyro[0];
+    data.gyro_y = gimbal_IMU_data->Gyro[1];
+    data.gyro_z = gimbal_IMU_data->Gyro[2];
+
+    SEGGER_RTT_Write(JSCOPE_CH, &data, sizeof(data));
+}
+
+
 void GimbalInit()
 {   
     gimbal_IMU_data = INS_Init(); // IMU先初始化,获取姿态数据指针赋给yaw电机的其他数据来源
+    JScope_Init();
     // YAW
     Motor_Init_Config_s yaw_config = {
         .can_init_config = {
@@ -81,7 +121,7 @@ void GimbalInit()
             },
             .other_angle_feedback_ptr = &gimbal_IMU_data->Pitch,
             // 还需要增加角速度额外反馈指针,注意方向,ins_task.md中有c板的bodyframe坐标系说明
-            .other_speed_feedback_ptr = (&gimbal_IMU_data->Gyro[0]),
+            .other_speed_feedback_ptr = (&gimbal_IMU_data->Gyro[1]),
         },
         .controller_setting_init_config = {
             .angle_feedback_source = OTHER_FEED,
@@ -94,8 +134,8 @@ void GimbalInit()
     };
 
     // 电机对total_angle闭环,上电时为零,会保持静止,收到遥控器数据再动
-    yaw_motor = DJIMotorInit(&yaw_config);
-    pitch_motor = DJIMotorInit(&pitch_config);
+    //yaw_motor = DJIMotorInit(&yaw_config);
+    //pitch_motor = DJIMotorInit(&pitch_config);
 
     gimbal_pub = PubRegister("gimbal_feed", sizeof(Gimbal_Upload_Data_s));
     gimbal_sub = SubRegister("gimbal_cmd", sizeof(Gimbal_Ctrl_Cmd_s));
@@ -104,45 +144,62 @@ void GimbalInit()
 /* 机器人云台控制核心任务,后续考虑只保留IMU控制,不再需要电机的反馈 */
 void GimbalTask()
 {
+    static uint16_t gyro_print_count = 0;
+
     // 获取云台控制数据
     // 后续增加未收到数据的处理
     SubGetMessage(gimbal_sub, &gimbal_cmd_recv);
 
     // @todo:现在已不再需要电机反馈,实际上可以始终使用IMU的姿态数据来作为云台的反馈,yaw电机的offset只是用来跟随底盘
     // 根据控制模式进行电机反馈切换和过渡,视觉模式在robot_cmd模块就已经设置好,gimbal只看yaw_ref和pitch_ref
-    switch (gimbal_cmd_recv.gimbal_mode)
-    {
-    // 停止
-    case GIMBAL_ZERO_FORCE:
-        DJIMotorStop(yaw_motor);
-        DJIMotorStop(pitch_motor);
-        break;
-    // 使用陀螺仪的反馈,底盘根据yaw电机的offset跟随云台或视觉模式采用
-    case GIMBAL_GYRO_MODE: // 后续只保留此模式
-        DJIMotorEnable(yaw_motor);
-        DJIMotorEnable(pitch_motor);
-        DJIMotorChangeFeed(yaw_motor, ANGLE_LOOP, OTHER_FEED);
-        DJIMotorChangeFeed(yaw_motor, SPEED_LOOP, OTHER_FEED);
-        DJIMotorChangeFeed(pitch_motor, ANGLE_LOOP, OTHER_FEED);
-        DJIMotorChangeFeed(pitch_motor, SPEED_LOOP, OTHER_FEED);
-        DJIMotorSetRef(yaw_motor, gimbal_cmd_recv.yaw); // yaw和pitch会在robot_cmd中处理好多圈和单圈
-        DJIMotorSetRef(pitch_motor, gimbal_cmd_recv.pitch);
-        break;
-    // 云台自由模式,使用编码器反馈,底盘和云台分离,仅云台旋转,一般用于调整云台姿态(英雄吊射等)/能量机关
-    case GIMBAL_FREE_MODE: // 后续删除,或加入云台追地盘的跟随模式(响应速度更快)
-        DJIMotorEnable(yaw_motor);
-        DJIMotorEnable(pitch_motor);
-        DJIMotorChangeFeed(yaw_motor, ANGLE_LOOP, OTHER_FEED);
-        DJIMotorChangeFeed(yaw_motor, SPEED_LOOP, OTHER_FEED);
-        DJIMotorChangeFeed(pitch_motor, ANGLE_LOOP, OTHER_FEED);
-        DJIMotorChangeFeed(pitch_motor, SPEED_LOOP, OTHER_FEED);
-        DJIMotorSetRef(yaw_motor, gimbal_cmd_recv.yaw); // yaw和pitch会在robot_cmd中处理好多圈和单圈
-        DJIMotorSetRef(pitch_motor, gimbal_cmd_recv.pitch);
-        break;
-    default:
-        break;
-    }
-
+    // switch (gimbal_cmd_recv.gimbal_mode)
+    // {
+    // // 停止
+    // case GIMBAL_ZERO_FORCE:
+    //     DJIMotorStop(yaw_motor);
+    //     DJIMotorStop(pitch_motor);
+    //     break;
+    // // 使用陀螺仪的反馈,底盘根据yaw电机的offset跟随云台或视觉模式采用
+    // case GIMBAL_GYRO_MODE: // 后续只保留此模式
+    //     DJIMotorEnable(yaw_motor);
+    //     DJIMotorEnable(pitch_motor);
+    //     DJIMotorChangeFeed(yaw_motor, ANGLE_LOOP, OTHER_FEED);
+    //     DJIMotorChangeFeed(yaw_motor, SPEED_LOOP, OTHER_FEED);
+    //     DJIMotorChangeFeed(pitch_motor, ANGLE_LOOP, OTHER_FEED);
+    //     DJIMotorChangeFeed(pitch_motor, SPEED_LOOP, OTHER_FEED);
+    //     DJIMotorSetRef(yaw_motor, gimbal_cmd_recv.yaw); // yaw和pitch会在robot_cmd中处理好多圈和单圈
+    //     DJIMotorSetRef(pitch_motor, gimbal_cmd_recv.pitch);
+    //     break;
+    // // 云台自由模式,使用编码器反馈,底盘和云台分离,仅云台旋转,一般用于调整云台姿态(英雄吊射等)/能量机关
+    // case GIMBAL_FREE_MODE: // 后续删除,或加入云台追地盘的跟随模式(响应速度更快)
+    //     DJIMotorEnable(yaw_motor);
+    //     DJIMotorEnable(pitch_motor);
+    //     DJIMotorChangeFeed(yaw_motor, ANGLE_LOOP, OTHER_FEED);
+    //     DJIMotorChangeFeed(yaw_motor, SPEED_LOOP, OTHER_FEED);
+    //     DJIMotorChangeFeed(pitch_motor, ANGLE_LOOP, OTHER_FEED);
+    //     DJIMotorChangeFeed(pitch_motor, SPEED_LOOP, OTHER_FEED);
+    //     DJIMotorSetRef(yaw_motor, gimbal_cmd_recv.yaw); // yaw和pitch会在robot_cmd中处理好多圈和单圈
+    //     DJIMotorSetRef(pitch_motor, gimbal_cmd_recv.pitch);
+    //     break;
+    // default:
+    //     break;
+    // }
+    JScope_Send();
+    SEGGER_RTT_printf(0,"roll:%d,pitch:%d,yaw:%d\n",(int16_t)gimbal_IMU_data->Roll,
+                                                  (int16_t)gimbal_IMU_data->Pitch,
+                                                  (int16_t)gimbal_IMU_data->Yaw);
+    // if ((gyro_print_count++ % 100) == 0)
+    // {
+    //     SEGGER_RTT_printf(0, "ang yaw:%d pitch:%d roll:%d total:%d (x1000)\r\n",
+    //                       (int)(gimbal_IMU_data->Yaw * 1000.0f),
+    //                       (int)(gimbal_IMU_data->Pitch * 1000.0f),
+    //                       (int)(gimbal_IMU_data->Roll * 1000.0f),
+    //                       (int)(gimbal_IMU_data->YawTotalAngle * 1000.0f));
+    //     SEGGER_RTT_printf(0, "gyro x:%d y:%d z:%d (x1e6)\r\n",
+    //                       (int)(gimbal_IMU_data->Gyro[0] * 1000000.0f),
+    //                       (int)(gimbal_IMU_data->Gyro[1] * 1000000.0f),
+    //                       (int)(gimbal_IMU_data->Gyro[2] * 1000000.0f));
+    // }
     // 在合适的地方添加pitch重力补偿前馈力矩
     // 根据IMU姿态/pitch电机角度反馈计算出当前配重下的重力矩
     // ...

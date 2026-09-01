@@ -20,8 +20,12 @@
 #include "mpu6500driver.h"
 #include "QuaternionEKF.h"
 #include "general_def.h"
+#include "SEGGER_RTT.h"
 #define BOARD_DOWN (1)   
 #define IST8310
+#define GYRO_OFFSET_LIMIT_X 0.04f
+#define GYRO_OFFSET_LIMIT_Y 0.04f
+#define GYRO_OFFSET_LIMIT_Z 0.04f
 float MPU6500_ACCEL_SEN = MPU6500_ACCEL_8G_SEN;
 float MPU6500_GYRO_SEN = MPU6500_GYRO_1000_SEN;
 																			
@@ -181,6 +185,23 @@ static void mpu_offset_call(void)
 	{
 		if (DWT_GetTimeline_s() - startTime > 15)
         {
+            SEGGER_RTT_printf(0, "imu cali timeout, use saved offset\r\n");
+            SEGGER_RTT_printf(0, "last cali offset x:%d y:%d z:%d (x1e6)\r\n",
+                              (int)(mpu_data.GyroOffset[0] * 1000000.0f),
+                              (int)(mpu_data.GyroOffset[1] * 1000000.0f),
+                              (int)(mpu_data.GyroOffset[2] * 1000000.0f));
+            SEGGER_RTT_printf(0, "last cali gNorm:%d gDiff:%d (x1e6)\r\n",
+                              (int)(mpu_data.gNorm * 1000000.0f),
+                              (int)(gNormDiff * 1000000.0f));
+            SEGGER_RTT_printf(0, "fail g:%d gx:%d gy:%d gz:%d\r\n",
+                              fabsf(mpu_data.gNorm - 9.8f) > 0.5f,
+                              gyroDiff[0] > 0.15f,
+                              gyroDiff[1] > 0.15f,
+                              gyroDiff[2] > 0.15f);
+            SEGGER_RTT_printf(0, "fail ox:%d oy:%d oz:%d\r\n",
+                              fabsf(mpu_data.GyroOffset[0]) > GYRO_OFFSET_LIMIT_X,
+                              fabsf(mpu_data.GyroOffset[1]) > GYRO_OFFSET_LIMIT_Y,
+                              fabsf(mpu_data.GyroOffset[2]) > GYRO_OFFSET_LIMIT_Z);
             mpu_data.GyroOffset[0] = GxOFFSET;
             mpu_data.GyroOffset[1] = GyOFFSET;
             mpu_data.GyroOffset[2] = GzOFFSET;
@@ -264,10 +285,22 @@ static void mpu_offset_call(void)
              gyroDiff[0] > 0.15f ||
              gyroDiff[1] > 0.15f ||
              gyroDiff[2] > 0.15f ||
-             fabsf(mpu_data.GyroOffset[0]) > 0.011f ||
-             fabsf(mpu_data.GyroOffset[1]) > 0.01f ||
-             fabsf(mpu_data.GyroOffset[2]) > 0.01f);
+             fabsf(mpu_data.GyroOffset[0]) > GYRO_OFFSET_LIMIT_X ||
+             fabsf(mpu_data.GyroOffset[1]) > GYRO_OFFSET_LIMIT_Y ||
+             fabsf(mpu_data.GyroOffset[2]) > GYRO_OFFSET_LIMIT_Z);
 	mpu_data.AccelScale = 9.81/mpu_data.gNorm;
+    SEGGER_RTT_printf(0, "gyro offset x:%d y:%d z:%d (x1e6)\r\n",
+                      (int)(mpu_data.GyroOffset[0] * 1000000.0f),
+                      (int)(mpu_data.GyroOffset[1] * 1000000.0f),
+                      (int)(mpu_data.GyroOffset[2] * 1000000.0f));
+    SEGGER_RTT_printf(0, "gNorm:%d accel scale:%d (x1e6)\r\n",
+                      (int)(mpu_data.gNorm * 1000000.0f),
+                      (int)(mpu_data.AccelScale * 1000000.0f));
+    SEGGER_RTT_printf(0, "cali check gDiff:%d gxDiff:%d gyDiff:%d gzDiff:%d (x1e6)\r\n",
+                      (int)(gNormDiff * 1000000.0f),
+                      (int)(gyroDiff[0] * 1000000.0f),
+                      (int)(gyroDiff[1] * 1000000.0f),
+                      (int)(gyroDiff[2] * 1000000.0f));
 }
 
 
@@ -322,8 +355,8 @@ void INS_Task(void)
         BodyFrameToEarthFrame(INS.MotionAccel_b, INS.MotionAccel_n, INS.q); // 转换回导航系n
 
         INS.Yaw = QEKF_INS.Yaw;
-        INS.Pitch = QEKF_INS.Pitch;
-        INS.Roll = QEKF_INS.Roll;
+        INS.Pitch = QEKF_INS.Roll;
+        INS.Roll = QEKF_INS.Pitch;
         INS.YawTotalAngle = QEKF_INS.YawTotalAngle;
 
     }

@@ -3,10 +3,10 @@
 #include "bsp_dwt.h"
 #define MPU_DELAY(x) DWT_Delay_ms(x)
 
-#define GxOFFSET 0.00744561851f
-#define GyOFFSET -0.00123410253f
-#define GzOFFSET -0.00820527598f
-#define gNORM 9.373390995f
+#define GxOFFSET 0.037452f
+#define GyOFFSET 0.003360f
+#define GzOFFSET 0.008532f
+#define gNORM 9.605101f
 typedef struct
 {
     float Gyro[3];  // 角速度
