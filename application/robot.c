@@ -19,7 +19,7 @@ void RobotInit()
     RobotCMDInit();
     GimbalInit();
     //ShootInit();
-    //ChassisInit();
+    ChassisInit();
 
     __enable_irq();
 }
@@ -29,5 +29,5 @@ void RobotTask()
     RobotCMDTask();
     GimbalTask();
     //ShootTask();
-    //ChassisTask();
+    ChassisTask();
 }

@@ -28,6 +28,8 @@
 #define HALF_TRACK_WIDTH (TRACK_WIDTH / 2.0f)   // 半轮距
 #define PERIMETER_WHEEL (RADIUS_WHEEL * 2 * PI) // 轮子周长
 
+
+
 /* 底盘应用包含的模块和信息存储,底盘是单例模式,因此不需要为底盘建立单独的结构体 */
 #ifdef CHASSIS_BOARD // 如果是底盘板,使用板载IMU获取底盘转动角速度
 #include "can_comm.h"
@@ -84,19 +86,19 @@ void ChassisInit()
     //使用功率控制的电机需要使用PowerControlInit()函数初始化,因为电机的控制方式不同
     chassis_motor_config.can_init_config.tx_id = 1;
     chassis_motor_config.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_NORMAL;
-    motor_lf = PowerControlInit(&chassis_motor_config);
-
-    chassis_motor_config.can_init_config.tx_id = 2;
-    chassis_motor_config.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_NORMAL;
-    motor_rf = PowerControlInit(&chassis_motor_config);
+    motor_lf = DJIMotorInit(&chassis_motor_config);
 
     chassis_motor_config.can_init_config.tx_id = 4;
     chassis_motor_config.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_NORMAL;
-    motor_lb = PowerControlInit(&chassis_motor_config);
+    motor_rf = DJIMotorInit(&chassis_motor_config);
+
+    chassis_motor_config.can_init_config.tx_id = 2;
+    chassis_motor_config.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_NORMAL;
+    motor_lb = DJIMotorInit(&chassis_motor_config);
 
     chassis_motor_config.can_init_config.tx_id = 3;
     chassis_motor_config.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_NORMAL;
-    motor_rb = PowerControlInit(&chassis_motor_config);
+    motor_rb = DJIMotorInit(&chassis_motor_config);
 
     referee_data = UITaskInit(&huart6, &ui_data); // 裁判系统初始化,会同时初始化UI
 
@@ -144,6 +146,8 @@ void ChassisInit()
 #define RF_CENTER ((HALF_TRACK_WIDTH - CENTER_GIMBAL_OFFSET_X + HALF_WHEEL_BASE - CENTER_GIMBAL_OFFSET_Y) * DEGREE_2_RAD)
 #define LB_CENTER ((HALF_TRACK_WIDTH + CENTER_GIMBAL_OFFSET_X + HALF_WHEEL_BASE + CENTER_GIMBAL_OFFSET_Y) * DEGREE_2_RAD)
 #define RB_CENTER ((HALF_TRACK_WIDTH - CENTER_GIMBAL_OFFSET_X + HALF_WHEEL_BASE + CENTER_GIMBAL_OFFSET_Y) * DEGREE_2_RAD)
+
+#ifdef CHASSIS_DRIVE_MECANUM
 /**
  * @brief 计算每个轮毂电机的输出,正运动学解算
  *        用宏进行预替换减小开销,运动解算具体过程参考教程
@@ -155,6 +159,27 @@ static void MecanumCalculate()
     vt_lb = chassis_vx - chassis_vy - chassis_cmd_recv.wz * LB_CENTER;
     vt_rb = chassis_vx + chassis_vy - chassis_cmd_recv.wz * RB_CENTER;
 }
+#endif
+
+#ifdef CHASSIS_DRIVE_OMNI_X
+#define COS45 0.70710678f
+// 全向轮 X 型排列: 四个轮子距中心等距 (用 LF_CENTER 近似, 四个 CENTER 宏值相等时成立)
+#define OMNI_L (LF_CENTER)
+
+/**
+ * @brief 四轮全向轮运动学解算 (X 型排列, 轮子互成 90°)
+ *
+ * 轮子布局:  RF=45°, LF=135°, LB=225°, RB=315°
+ * 公式: v_i = vx*cos(θ) + vy*sin(θ) - wz*L
+ */
+static void OmniCalculate()
+{
+    vt_rf =  chassis_vx * COS45 + chassis_vy * COS45 + chassis_cmd_recv.wz * OMNI_L;
+    vt_lf = -chassis_vx * COS45 + chassis_vy * COS45 + chassis_cmd_recv.wz * OMNI_L;
+    vt_lb = -chassis_vx * COS45 - chassis_vy * COS45 + chassis_cmd_recv.wz * OMNI_L;
+    vt_rb =  chassis_vx * COS45 - chassis_vy * COS45 + chassis_cmd_recv.wz * OMNI_L;
+}
+#endif
 
 /**
  * @brief 根据裁判系统和电容剩余容量对输出进行限制并设置电机参考值
@@ -238,7 +263,7 @@ void ChassisTask()
     chassis_vy = chassis_cmd_recv.vx * sin_theta + chassis_cmd_recv.vy * cos_theta;
 
     // 根据控制模式进行正运动学解算,计算底盘输出
-    MecanumCalculate();
+    OmniCalculate();
 
     // 根据裁判系统的反馈数据和电容数据对输出限幅并设定闭环参考值
     LimitChassisOutput();

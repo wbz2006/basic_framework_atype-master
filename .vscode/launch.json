@@ -31,7 +31,7 @@
             "executable": "${workspaceRoot}\\build\\basic_framework_ATYPE.elf",
             "request": "launch",
             "type": "cortex-debug",
-            "device": "STM32F427II",
+            "device": "STM32F427IG",
             "runToEntryPoint": "main",
             "showDevDebugOutput": "none",
             "servertype": "jlink",

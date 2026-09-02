@@ -21,6 +21,11 @@
 // #define CHASSIS_BOARD //底盘板
 // #define GIMBAL_BOARD  //云台板
 
+// 底盘运动学类型和命令方向修正。
+//#define CHASSIS_DRIVE_MECANUM 0  // 麦克纳姆轮
+#define CHASSIS_DRIVE_OMNI_X 1  // X 型四全向轮
+#define CHASSIS_CMD_DIR_TRIM_DEG 0.0f  // 平动命令方向零偏修正，单位 deg
+
 #define VISION_USE_VCP  // 使用虚拟串口发送视觉数据
 // #define VISION_USE_UART // 使用串口发送视觉数据
 
@@ -53,6 +58,7 @@
     (defined(CHASSIS_BOARD) && defined(GIMBAL_BOARD))
 #error Conflict board definition! You can only define one board type.
 #endif
+
 
 #pragma pack(1) // 压缩结构体,取消字节对齐,下面的数据都可能被传输
 /* -------------------------基本控制模式和数据类型定义-------------------------*/

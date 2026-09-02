@@ -54,7 +54,7 @@ void JScope_Send(void)
     SEGGER_RTT_Write(JSCOPE_CH, &data, sizeof(data));
 }
 
-
+static DJIMotorInstance *motor_lf;
 void GimbalInit()
 {   
     gimbal_IMU_data = INS_Init(); // IMU先初始化,获取姿态数据指针赋给yaw电机的其他数据来源
@@ -132,8 +132,34 @@ void GimbalInit()
         },
         .motor_type = GM6020,
     };
-
+     Motor_Init_Config_s chassis_motor_config = {
+        .can_init_config.can_handle = &hcan1,
+        .controller_param_init_config = {
+            .speed_PID = {
+                .Kp = 4.5, // 4.5
+                .Ki = 0,   // 0
+                .Kd = 0,   // 0
+                .IntegralLimit = 3000,
+                .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,
+                .MaxOut = 15000,
+                .Output_LPF_RC = 0.3,
+            },
+        },
+        .controller_setting_init_config = {
+            .angle_feedback_source = MOTOR_FEED,
+            .speed_feedback_source = MOTOR_FEED,
+            .outer_loop_type = SPEED_LOOP, // 设置为开环，电机设定值由下面的功率控制设定，不走普通的pid
+            .close_loop_type = SPEED_LOOP,
+        },
+        .motor_type = M3508,
+    };
+    //  @todo: 当前还没有设置电机的正反转,仍然需要手动添加reference的正负号,需要电机module的支持,待修改.
+    //使用功率控制的电机需要使用PowerControlInit()函数初始化,因为电机的控制方式不同
+    chassis_motor_config.can_init_config.tx_id = 1;
+    chassis_motor_config.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_NORMAL;
+    motor_lf = DJIMotorInit(&chassis_motor_config);
     // 电机对total_angle闭环,上电时为零,会保持静止,收到遥控器数据再动
+
     //yaw_motor = DJIMotorInit(&yaw_config);
     //pitch_motor = DJIMotorInit(&pitch_config);
 
