@@ -17,7 +17,7 @@ void RobotInit()
     BSPInit();
    
     RobotCMDInit();
-    GimbalInit();
+    //GimbalInit();
     //ShootInit();
     ChassisInit();
 
@@ -27,7 +27,7 @@ void RobotInit()
 void RobotTask()
 {
     RobotCMDTask();
-    GimbalTask();
+    //GimbalTask();
     //ShootTask();
     ChassisTask();
 }

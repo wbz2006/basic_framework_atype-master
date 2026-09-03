@@ -22,9 +22,9 @@
 // #define GIMBAL_BOARD  //云台板
 
 // 底盘运动学类型和命令方向修正。
-//#define CHASSIS_DRIVE_MECANUM 0  // 麦克纳姆轮
-#define CHASSIS_DRIVE_OMNI_X 1  // X 型四全向轮
-#define CHASSIS_CMD_DIR_TRIM_DEG 0.0f  // 平动命令方向零偏修正，单位 deg
+//#define CHASSIS_DRIVE_MECANUM   // 麦克纳姆轮
+#define CHASSIS_DRIVE_OMNI_X   // X 型四全向轮
+#define CHASSIS_CMD_DIR_TRIM_DEG -45.0f // 平动命令方向零偏修正，单位 deg；X型全向轮默认从轮子连线坐标转到底盘坐标
 
 #define VISION_USE_VCP  // 使用虚拟串口发送视觉数据
 // #define VISION_USE_UART // 使用串口发送视觉数据
@@ -39,7 +39,7 @@
 // 发射参数
 #define ONE_BULLET_DELTA_ANGLE 36    // 发射一发弹丸拨盘转动的距离,由机械设计图纸给出
 #define REDUCTION_RATIO_LOADER 36.0f // 2006拨盘电机的减速比,英雄需要修改为3508的19.0f
-#define NUM_PER_CIRCLE 10            // 拨盘一圈的装载量
+#define NUM_PER_CIRCLE 8            // 拨盘一圈的装载量
 // 机器人底盘修改的参数,单位为mm(毫米)
 #define WHEEL_BASE 350              // 纵向轴距(前进后退方向)
 #define TRACK_WIDTH 300             // 横向轮距(左右平移方向)
