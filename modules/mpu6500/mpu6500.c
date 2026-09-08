@@ -324,19 +324,24 @@ void INS_Task(void)
         INS.Accel[0] = mpu_data.Accel[0];
         INS.Accel[1] = mpu_data.Accel[1];
         INS.Accel[2] = mpu_data.Accel[2];
-        INS.Gyro[0] = mpu_data.Gyro[0];
-        INS.Gyro[1] = mpu_data.Gyro[1];
-        INS.Gyro[2] = mpu_data.Gyro[2];
+        float gyro_rad[3] = {
+            mpu_data.Gyro[0],
+            mpu_data.Gyro[1],
+            mpu_data.Gyro[2],
+        };
+        INS.Gyro[0] = gyro_rad[0] * RAD_2_DEGREE;
+        INS.Gyro[1] = gyro_rad[1] * RAD_2_DEGREE;
+        INS.Gyro[2] = gyro_rad[2] * RAD_2_DEGREE;
 
         // demo function,用于修正安装误差,可以不管,本demo暂时没用
-        IMU_Param_Correction(&IMU_Param, INS.Gyro, INS.Accel);
+        IMU_Param_Correction(&IMU_Param, gyro_rad, INS.Accel);
 
         // 计算重力加速度矢量和b系的XY两轴的夹角,可用作功能扩展,本demo暂时没用
         // INS.atanxz = -atan2f(INS.Accel[X], INS.Accel[Z]) * 180 / PI;
         // INS.atanyz = atan2f(INS.Accel[Y], INS.Accel[Z]) * 180 / PI;
 
         // 核心函数,EKF更新四元数
-        IMU_QuaternionEKF_Update(INS.Gyro[0], INS.Gyro[1], INS.Gyro[2], INS.Accel[0], INS.Accel[1], INS.Accel[2], dt);
+        IMU_QuaternionEKF_Update(gyro_rad[0], gyro_rad[1], gyro_rad[2], INS.Accel[0], INS.Accel[1], INS.Accel[2], dt);
 
         memcpy(INS.q, QEKF_INS.q, sizeof(QEKF_INS.q));
 
