@@ -24,7 +24,7 @@
 // 底盘运动学类型和命令方向修正。
 //#define CHASSIS_DRIVE_MECANUM   // 麦克纳姆轮
 #define CHASSIS_DRIVE_OMNI_X   // X 型四全向轮
-#define CHASSIS_CMD_DIR_TRIM_DEG -45.0f // 平动命令方向零偏修正，单位 deg；X型全向轮默认从轮子连线坐标转到底盘坐标
+#define CHASSIS_CMD_DIR_TRIM_DEG 0.0f // 平动命令方向零偏修正，单位 deg；X型全向轮默认从轮子连线坐标转到底盘坐标
 
 #define VISION_USE_VCP  // 使用虚拟串口发送视觉数据
 // #define VISION_USE_UART // 使用串口发送视觉数据
