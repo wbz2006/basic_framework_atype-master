@@ -24,7 +24,6 @@
 // 底盘运动学类型和命令方向修正。
 //#define CHASSIS_DRIVE_MECANUM   // 麦克纳姆轮
 #define CHASSIS_DRIVE_OMNI_X   // X 型四全向轮
-#define CHASSIS_CMD_DIR_TRIM_DEG 0.0f // 平动命令方向零偏修正，单位 deg；X型全向轮默认从轮子连线坐标转到底盘坐标
 
 #define VISION_USE_VCP  // 使用虚拟串口发送视觉数据
 // #define VISION_USE_UART // 使用串口发送视觉数据
@@ -37,7 +36,7 @@
 #define PITCH_MAX_ANGLE 30           // 云台竖直方向最大角度 (注意反馈如果是陀螺仪，则填写陀螺仪的角度)
 #define PITCH_MIN_ANGLE -30           // 云台竖直方向最小角度 (注意反馈如果是陀螺仪，则填写陀螺仪的角度)
 // 发射参数
-#define ONE_BULLET_DELTA_ANGLE 36    // 发射一发弹丸拨盘转动的距离,由机械设计图纸给出
+#define ONE_BULLET_DELTA_ANGLE 45    // 发射一发弹丸拨盘转动的距离,由机械设计图纸给出
 #define REDUCTION_RATIO_LOADER 36.0f // 2006拨盘电机的减速比,英雄需要修改为3508的19.0f
 #define NUM_PER_CIRCLE 8            // 拨盘一圈的装载量
 // 机器人底盘修改的参数,单位为mm(毫米)

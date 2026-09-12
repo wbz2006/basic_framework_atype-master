@@ -23,6 +23,7 @@
 #include "bsp_dwt.h"
 #include "referee_UI.h"
 #include "arm_math.h"
+#include "user_lib.h"
 
 /* 根据robot_def.h中的macro自动计算的参数 */
 #define HALF_WHEEL_BASE (WHEEL_BASE / 2.0f)     // 半轴距
@@ -245,9 +246,14 @@ void ChassisTask()
     case CHASSIS_NO_FOLLOW: // 底盘不旋转,但维持全向机动,一般用于调整云台姿态
         chassis_cmd_recv.wz = 0;
         break;
-    case CHASSIS_FOLLOW_GIMBAL_YAW: // 跟随云台,不单独设置pid,以误差角度平方为速度输出
-        chassis_cmd_recv.wz = -1.5f * chassis_cmd_recv.offset_angle * abs(chassis_cmd_recv.offset_angle);
+    case CHASSIS_FOLLOW_GIMBAL_YAW: // 跟随云台,不单独设置pid,以误差角度线性输出
+    {
+        // 防止通信端或其他调用者传入非最近角度
+        float offset = theta_format(chassis_cmd_recv.offset_angle);
+        chassis_cmd_recv.wz = -50.0f * offset;
+        chassis_cmd_recv.wz = float_constrain(chassis_cmd_recv.wz, -1500.0f, 1500.0f);
         break;
+    }
     case CHASSIS_ROTATE: // 自旋,同时保持全向机动;当前wz维持定值,后续增加不规则的变速策略
         chassis_cmd_recv.wz = 4000;
         break;
@@ -258,7 +264,7 @@ void ChassisTask()
     // 根据云台和底盘的角度offset将控制量映射到底盘坐标系上
     // 底盘逆时针旋转为角度正方向;云台命令的方向以云台指向的方向为x,采用右手系(x指向正北时y在正东)
     static float theta, sin_theta, cos_theta;
-    theta = (chassis_cmd_recv.offset_angle + CHASSIS_CMD_DIR_TRIM_DEG) * DEGREE_2_RAD;
+    theta = chassis_cmd_recv.offset_angle * DEGREE_2_RAD;
     cos_theta = arm_cos_f32(theta);
     sin_theta = arm_sin_f32(theta);
     chassis_vx = chassis_cmd_recv.vx * cos_theta - chassis_cmd_recv.vy * sin_theta;
