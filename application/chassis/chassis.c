@@ -251,7 +251,7 @@ void ChassisTask()
         // 防止通信端或其他调用者传入非最近角度
         float offset = theta_format(chassis_cmd_recv.offset_angle);
         chassis_cmd_recv.wz = -50.0f * offset;
-        chassis_cmd_recv.wz = float_constrain(chassis_cmd_recv.wz, -1500.0f, 1500.0f);
+        chassis_cmd_recv.wz = float_constrain(chassis_cmd_recv.wz, -4500.0f, 4500.0f);
         break;
     }
     case CHASSIS_ROTATE: // 自旋,同时保持全向机动;当前wz维持定值,后续增加不规则的变速策略

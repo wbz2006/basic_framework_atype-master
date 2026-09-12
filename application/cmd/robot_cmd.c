@@ -87,21 +87,8 @@ static void CalcOffsetAngle()
     // 别名angle提高可读性,不然太长了不好看,虽然基本不会动这个函数
     static float angle;
     angle = gimbal_fetch_data.yaw_motor_single_round_angle; // 从云台获取的当前yaw电机单圈角度
-#if YAW_ECD_GREATER_THAN_4096                               // 如果大于180度
-    if (angle > YAW_ALIGN_ANGLE && angle <= 180.0f + YAW_ALIGN_ANGLE)
-        chassis_cmd_send.offset_angle = angle - YAW_ALIGN_ANGLE;
-    else if (angle > 180.0f + YAW_ALIGN_ANGLE)
-        chassis_cmd_send.offset_angle = angle - YAW_ALIGN_ANGLE - 360.0f;
-    else
-        chassis_cmd_send.offset_angle = angle - YAW_ALIGN_ANGLE;
-#else // 小于180度
-    if (angle > YAW_ALIGN_ANGLE)
-        chassis_cmd_send.offset_angle = angle - YAW_ALIGN_ANGLE;
-    else if (angle <= YAW_ALIGN_ANGLE && angle >= YAW_ALIGN_ANGLE - 180.0f)
-        chassis_cmd_send.offset_angle = angle - YAW_ALIGN_ANGLE;
-    else
-        chassis_cmd_send.offset_angle = angle - YAW_ALIGN_ANGLE + 360.0f;
-#endif
+    // 取云台相对底盘的最近角度，避免跨越0/360度时得到接近360度的误差
+    chassis_cmd_send.offset_angle = theta_format(angle - YAW_ALIGN_ANGLE);
 }
 
 /**
@@ -150,8 +137,8 @@ static void RemoteControlSet()
     // 云台软件限位
 
     // 底盘参数,目前没有加入小陀螺(调试似乎暂时没有必要),系数需要调整
-    chassis_cmd_send.vx = -10.0f * (float)rc_data[TEMP].rc.rocker_r1; // 右摇杆竖直方向：前进/后退
-    chassis_cmd_send.vy = 10.0f * (float)rc_data[TEMP].rc.rocker_r_; // 右摇杆水平方向：左/右横移
+    chassis_cmd_send.vx = -40.0f * (float)rc_data[TEMP].rc.rocker_r1; // 右摇杆竖直方向：前进/后退
+    chassis_cmd_send.vy = 40.0f * (float)rc_data[TEMP].rc.rocker_r_; // 右摇杆水平方向：左/右横移
 
     // 发射参数
     // if (switch_is_up(rc_data[TEMP].rc.switch_right)) // 右侧开关状态[上],弹舱打开
