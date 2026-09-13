@@ -254,6 +254,9 @@ static void MouseKeySet()
  */
 static void VideoTransmissionControlSet()
 {
+    static uint8_t last_mouse_left = 0;
+    uint8_t mouse_left_pressed;
+
     chassis_cmd_send.chassis_mode = CHASSIS_NO_FOLLOW;
     gimbal_cmd_send.gimbal_mode = GIMBAL_GYRO_MODE;
 
@@ -262,6 +265,9 @@ static void VideoTransmissionControlSet()
 
     gimbal_cmd_send.yaw -= (float)vt02_data->mouse.x / 660 * 10;
     gimbal_cmd_send.pitch += (float)vt02_data->mouse.y / 660 * 10;
+
+    mouse_left_pressed = vt02_data->mouse.press_l && !last_mouse_left;
+    last_mouse_left = vt02_data->mouse.press_l;
 
     switch (vt02_data->key_count[KEY_PRESS][Key_Z] % 3)   // 设置摩擦轮转速
     {
@@ -281,13 +287,16 @@ static void VideoTransmissionControlSet()
         shoot_cmd_send.load_mode = LOAD_STOP;
         break;
     case 1:
-        shoot_cmd_send.load_mode = LOAD_1_BULLET;
+        // 单发只响应鼠标左键按下沿,避免松开鼠标中断发射
+        shoot_cmd_send.load_mode = mouse_left_pressed ? LOAD_1_BULLET : LOAD_STOP;
         break;
     case 2:
-        shoot_cmd_send.load_mode = LOAD_3_BULLET;
+        // 三连发只响应鼠标左键按下沿,避免松开鼠标中断发射
+        shoot_cmd_send.load_mode = mouse_left_pressed ? LOAD_3_BULLET : LOAD_STOP;
         break;
     default:
-        shoot_cmd_send.load_mode = LOAD_BURSTFIRE;
+        // 连射时左键按下运行,松开停止
+        shoot_cmd_send.load_mode = vt02_data->mouse.press_l ? LOAD_BURSTFIRE : LOAD_STOP;
         break;
     }
     switch (vt02_data->key_count[KEY_PRESS][Key_R] % 2)     // 开启/关闭弹仓
@@ -321,6 +330,21 @@ static void VideoTransmissionControlSet()
         break;
     default:
         chassis_cmd_send.chassis_speed_buff = 100;
+        break;
+    }
+    switch (vt02_data->key_count[KEY_PRESS][Key_X] % 4)
+    {
+    case 0:
+        chassis_cmd_send.chassis_mode = CHASSIS_NO_FOLLOW;
+        break;
+    case 1:
+        chassis_cmd_send.chassis_mode = CHASSIS_FOLLOW_GIMBAL_YAW;
+        break;
+    case 2:
+        chassis_cmd_send.chassis_mode = CHASSIS_ROTATE;
+        break;
+    default:
+        chassis_cmd_send.chassis_mode = CHASSIS_ZERO_FORCE;
         break;
     }
     switch (vt02_data->key[KEY_PRESS].shift)                // 待添加 按shift允许超功率 消耗缓冲能量
