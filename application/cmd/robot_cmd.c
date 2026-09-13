@@ -3,6 +3,7 @@
 #include "robot_cmd.h"
 // module
 #include "remote_control.h"
+#include "vt02_control.h"
 #include "mpu6500.h"
 #include "master_process.h"
 #include "message_center.h"
@@ -31,6 +32,7 @@ static Chassis_Ctrl_Cmd_s chassis_cmd_send;      // 发送给底盘应用的信�
 static Chassis_Upload_Data_s chassis_fetch_data; // 从底盘应用接收的反馈信息信息,底盘功率枪口热量与底盘运动状态等
 
 static RC_ctrl_t *rc_data;              // 遥控器数据,初始化时返回
+static Vt02_Ctrl_t *vt02_data;          // 图传键鼠数据,初始化时返回
 static Vision_Recv_s *vision_recv_data; // 视觉接收数据指针,初始化时返回
 // static Vision_Send_s vision_send_data;  // 视觉发送数据
 
@@ -50,6 +52,7 @@ void RobotCMDInit()
 {
     rc_data = RemoteControlInit(&huart1);   // 修改为对应串口,注意如果是自研板dbus协议串口需选用添加了反相器的那个
     vision_recv_data = VisionInit(&huart3); // 视觉通信串口
+    vt02_data = Vt02ControlInit(&huart8);   // 图传键鼠通信串口
 
 
     gimbal_cmd_pub = PubRegister("gimbal_cmd", sizeof(Gimbal_Ctrl_Cmd_s));
@@ -132,7 +135,7 @@ static void RemoteControlSet()
     // 左侧开关状态为[下],或视觉未识别到目标,纯遥控器拨杆控制
     if (switch_is_down(rc_data[TEMP].rc.switch_left) || vision_recv_data->target_state == NO_TARGET)
     { // 按照摇杆的输出大小进行角度增量,增益系数需调整
-        gimbal_cmd_send.yaw += 0.005f * (float)rc_data[TEMP].rc.rocker_l_;
+        gimbal_cmd_send.yaw -= 0.005f * (float)rc_data[TEMP].rc.rocker_l_;
         gimbal_cmd_send.pitch += 0.001f * (float)rc_data[TEMP].rc.rocker_l1;
     }
     // 云台软件限位
@@ -251,7 +254,85 @@ static void MouseKeySet()
  */
 static void VideoTransmissionControlSet()
 {
+    chassis_cmd_send.chassis_mode = CHASSIS_NO_FOLLOW;
+    gimbal_cmd_send.gimbal_mode = GIMBAL_GYRO_MODE;
 
+    chassis_cmd_send.vx = -vt02_data->key[KEY_PRESS].w * 3000 + vt02_data->key[KEY_PRESS].s * 3000;
+    chassis_cmd_send.vy = -vt02_data->key[KEY_PRESS].d * 3000 + vt02_data->key[KEY_PRESS].a * 3000;
+
+    gimbal_cmd_send.yaw -= (float)vt02_data->mouse.x / 660 * 10;
+    gimbal_cmd_send.pitch += (float)vt02_data->mouse.y / 660 * 10;
+
+    switch (vt02_data->key_count[KEY_PRESS][Key_Z] % 3) //设置
+    {
+    case 0:
+        shoot_cmd_send.bullet_speed = SMALL_AMU_15;
+        break;
+    case 1:
+        shoot_cmd_send.bullet_speed = SMALL_AMU_18;
+        break;
+    default:
+        shoot_cmd_send.bullet_speed = SMALL_AMU_30;
+        break;
+    }
+    switch (vt02_data->key_count[KEY_PRESS][Key_E] % 4)
+    {
+    case 0:
+        shoot_cmd_send.load_mode = LOAD_STOP;
+        break;
+    case 1:
+        shoot_cmd_send.load_mode = LOAD_1_BULLET;
+        break;
+    case 2:
+        shoot_cmd_send.load_mode = LOAD_3_BULLET;
+        break;
+    default:
+        shoot_cmd_send.load_mode = LOAD_BURSTFIRE;
+        break;
+    }
+    switch (vt02_data->key_count[KEY_PRESS][Key_R] % 2)
+    {
+    case 0:
+        shoot_cmd_send.lid_mode = LID_OPEN;
+        break;
+    default:
+        shoot_cmd_send.lid_mode = LID_CLOSE;
+        break;
+    }
+    switch (vt02_data->key_count[KEY_PRESS][Key_F] % 2)
+    {
+    case 0:
+        shoot_cmd_send.friction_mode = FRICTION_OFF;
+        break;
+    default:
+        shoot_cmd_send.friction_mode = FRICTION_ON;
+        break;
+    }
+    switch (vt02_data->key_count[KEY_PRESS][Key_C] % 4)
+    {
+    case 0:
+        chassis_cmd_send.chassis_speed_buff = 40;
+        break;
+    case 1:
+        chassis_cmd_send.chassis_speed_buff = 60;
+        break;
+    case 2:
+        chassis_cmd_send.chassis_speed_buff = 80;
+        break;
+    default:
+        chassis_cmd_send.chassis_speed_buff = 100;
+        break;
+    }
+    switch (vt02_data->key[KEY_PRESS].shift)
+    {
+    case 1:
+
+        break;
+
+    default:
+
+        break;
+    }
 }
 
 /**
