@@ -333,6 +333,7 @@ static void VideoTransmissionControlSet()
 
         break;
     }
+    shoot_cmd_send.shoot_rate = 8;
 }
 
 /**
