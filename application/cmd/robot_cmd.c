@@ -51,6 +51,7 @@ void RobotCMDInit()
     rc_data = RemoteControlInit(&huart1);   // 修改为对应串口,注意如果是自研板dbus协议串口需选用添加了反相器的那个
     vision_recv_data = VisionInit(&huart3); // 视觉通信串口
 
+
     gimbal_cmd_pub = PubRegister("gimbal_cmd", sizeof(Gimbal_Ctrl_Cmd_s));
     gimbal_feed_sub = SubRegister("gimbal_feed", sizeof(Gimbal_Upload_Data_s));
     shoot_cmd_pub = PubRegister("shoot_cmd", sizeof(Shoot_Ctrl_Cmd_s));
@@ -245,6 +246,15 @@ static void MouseKeySet()
 }
 
 /**
+ * @brief 控制输入为图传的模式和控制量设置
+ *
+ */
+static void VideoTransmissionControlSet()
+{
+
+}
+
+/**
  * @brief  紧急停止,包括遥控器左上侧拨轮打满/重要模块离线/双板通信失效等
  *         停止的阈值'300'待修改成合适的值,或改为开关控制.
  *
@@ -292,8 +302,8 @@ void RobotCMDTask()
     // 根据遥控器左侧开关,确定当前使用的控制模式为遥控器调试还是键鼠
     if (switch_is_down(rc_data[TEMP].rc.switch_left)) // 遥控器左侧开关状态为[下],遥控器控制
         RemoteControlSet();
-    else if (switch_is_up(rc_data[TEMP].rc.switch_left)) // 遥控器左侧开关状态为[上],键盘控制
-        MouseKeySet();
+    else if (switch_is_up(rc_data[TEMP].rc.switch_left)) // 遥控器左侧开关状态为[上],图传控制
+        VideoTransmissionControlSet();
 
     GimbalAngleLimit(); // 对云台角度进行软件限位,防止超出机械边界
 

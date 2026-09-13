@@ -116,7 +116,7 @@ modules/standard_cmd/std_cmd.c \
 modules/super_cap/super_cap.c \
 modules/unicomm/unicomm.c \
 modules/key/key.c \
-modules/vtx/vt02.c \
+modules/vtx/vt02_control.c \
 application/gimbal/gimbal.c \
 application/chassis/chassis.c \
 application/shoot/shoot.c \
