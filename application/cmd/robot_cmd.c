@@ -263,7 +263,7 @@ static void VideoTransmissionControlSet()
     gimbal_cmd_send.yaw -= (float)vt02_data->mouse.x / 660 * 10;
     gimbal_cmd_send.pitch += (float)vt02_data->mouse.y / 660 * 10;
 
-    switch (vt02_data->key_count[KEY_PRESS][Key_Z] % 3) //设置
+    switch (vt02_data->key_count[KEY_PRESS][Key_Z] % 3)   // 设置摩擦轮转速
     {
     case 0:
         shoot_cmd_send.bullet_speed = SMALL_AMU_15;
@@ -275,7 +275,7 @@ static void VideoTransmissionControlSet()
         shoot_cmd_send.bullet_speed = SMALL_AMU_30;
         break;
     }
-    switch (vt02_data->key_count[KEY_PRESS][Key_E] % 4)
+    switch (vt02_data->key_count[KEY_PRESS][Key_E] % 4)   // 设置拨弹盘转动角度——射击模式
     {
     case 0:
         shoot_cmd_send.load_mode = LOAD_STOP;
@@ -290,7 +290,7 @@ static void VideoTransmissionControlSet()
         shoot_cmd_send.load_mode = LOAD_BURSTFIRE;
         break;
     }
-    switch (vt02_data->key_count[KEY_PRESS][Key_R] % 2)
+    switch (vt02_data->key_count[KEY_PRESS][Key_R] % 2)     // 开启/关闭弹仓
     {
     case 0:
         shoot_cmd_send.lid_mode = LID_OPEN;
@@ -299,7 +299,7 @@ static void VideoTransmissionControlSet()
         shoot_cmd_send.lid_mode = LID_CLOSE;
         break;
     }
-    switch (vt02_data->key_count[KEY_PRESS][Key_F] % 2)
+    switch (vt02_data->key_count[KEY_PRESS][Key_F] % 2)     //开启摩擦轮
     {
     case 0:
         shoot_cmd_send.friction_mode = FRICTION_OFF;
@@ -308,7 +308,7 @@ static void VideoTransmissionControlSet()
         shoot_cmd_send.friction_mode = FRICTION_ON;
         break;
     }
-    switch (vt02_data->key_count[KEY_PRESS][Key_C] % 4)
+    switch (vt02_data->key_count[KEY_PRESS][Key_C] % 4)     // 设置底盘速度
     {
     case 0:
         chassis_cmd_send.chassis_speed_buff = 40;
@@ -323,7 +323,7 @@ static void VideoTransmissionControlSet()
         chassis_cmd_send.chassis_speed_buff = 100;
         break;
     }
-    switch (vt02_data->key[KEY_PRESS].shift)
+    switch (vt02_data->key[KEY_PRESS].shift)                // 待添加 按shift允许超功率 消耗缓冲能量
     {
     case 1:
 
