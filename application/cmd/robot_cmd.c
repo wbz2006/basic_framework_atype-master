@@ -335,16 +335,16 @@ static void VideoTransmissionControlSet()
     switch (vt02_data->key_count[KEY_PRESS][Key_X] % 4)
     {
     case 0:
-        chassis_cmd_send.chassis_mode = CHASSIS_NO_FOLLOW;
+        chassis_cmd_send.chassis_mode = CHASSIS_ZERO_FORCE;
         break;
     case 1:
-        chassis_cmd_send.chassis_mode = CHASSIS_FOLLOW_GIMBAL_YAW;
+        chassis_cmd_send.chassis_mode = CHASSIS_NO_FOLLOW;
         break;
     case 2:
-        chassis_cmd_send.chassis_mode = CHASSIS_ROTATE;
+        chassis_cmd_send.chassis_mode = CHASSIS_FOLLOW_GIMBAL_YAW;
         break;
     default:
-        chassis_cmd_send.chassis_mode = CHASSIS_ZERO_FORCE;
+        chassis_cmd_send.chassis_mode = CHASSIS_ROTATE;
         break;
     }
     switch (vt02_data->key[KEY_PRESS].shift)                // 待添加 按shift允许超功率 消耗缓冲能量

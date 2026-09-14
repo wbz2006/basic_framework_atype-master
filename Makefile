@@ -117,6 +117,7 @@ modules/super_cap/super_cap.c \
 modules/unicomm/unicomm.c \
 modules/key/key.c \
 modules/vtx/vt02_control.c \
+modules/jam_detetctor/jam_detetctor.c \
 application/gimbal/gimbal.c \
 application/chassis/chassis.c \
 application/shoot/shoot.c \
@@ -254,6 +255,7 @@ C_INCLUDES =  \
 -Imodules/unicomm \
 -Imodules/key \
 -Imodules/vtx \
+-Imodules/jam_detetctor \
 -Imodules \
 -ICore/Inc
 
