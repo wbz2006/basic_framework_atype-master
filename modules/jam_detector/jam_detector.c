@@ -2,18 +2,21 @@
 
 #include <math.h>
 #include <stdlib.h>
-#include <string.h> // memset
+#include <string.h>
 
-#include "bsp_dwt.h"  // DWT_GetTimeline_ms
-#include "motor_def.h"// ANGLE_LOOP, SPEED_LOOP, Closeloop_Type_e
+#include "bsp_dwt.h"
+#include "motor_def.h"
 
 
 #define DEFAULT_CURRENT_THRESHOLD   3000.0f  /**< 默认电流阈值, CAN原始值; 调用者应按对应电机的lCur实测调整 */
-#define DEFAULT_SUSPECT_TIMEOUT_MS  300.0f   /**< 默认嫌疑超时 300ms */
-#define DEFAULT_HANDLING_TIMEOUT_MS 800.0f   /**< 默认处理超时 400ms */
+#define DEFAULT_SUSPECT_TIMEOUT_MS  150.0f   /**< 默认嫌疑超时 150ms */
+#define DEFAULT_HANDLING_TIMEOUT_MS 800.0f   /**< 默认处理超时 800ms */
 #define DEFAULT_REVERSE_ANGLE       45.0f   /**< 默认回退角度 45° (电机轴) */
+#define DEFAULT_SPEED_THRESHOLD     200.0f  /**< 默认低速阈值 200°/s */
+#define DEFAULT_MIN_ANGLE_ERROR     100.0f  /**< 默认最小角度误差 100° (电机轴) */
+#define DEFAULT_MIN_SPEED_REFERENCE 100.0f  /**< 默认最小速度指令 100°/s */
 #define JAM_ANGLE_TOLERANCE         8.0f    /**< 认为已到达回退目标的角度误差 */
-#define JAM_SPEED_TOLERANCE         200.0f  /**< 回退完成时允许的最大电机轴速度 */
+#define JAM_HANDLING_SPEED_TOLERANCE 200.0f /**< 回退完成时允许的最大电机轴速度 */
 
 /**
  * @brief 初始化卡弹检测器
@@ -24,14 +27,33 @@
  */
 JamDetectorInstance *JamDetectorInit(JamDetector_Init_Config_s *config, DJIMotorInstance *motor)
 {
-    JamDetectorInstance *jam = (JamDetectorInstance*)malloc(sizeof(JamDetectorInstance));
-    memset(jam,0,sizeof(JamDetectorInstance));
+    JamDetectorInstance *jam = (JamDetectorInstance *)malloc(sizeof(JamDetectorInstance));
 
-    jam->current_threshold   = (config->current_threshold   > 0.0f ) ? config->current_threshold   : DEFAULT_CURRENT_THRESHOLD;
-    jam->suspect_timeout_ms  = (config->suspect_timeout_ms  >0.0f  ) ? config->suspect_timeout_ms  : DEFAULT_SUSPECT_TIMEOUT_MS;
-    jam->handling_timeout_ms = (config->handling_timeout_ms > 0.0f ) ? config->handling_timeout_ms : DEFAULT_HANDLING_TIMEOUT_MS;
-    jam->reverse_angle       = (config->reverse_angle       > 0.0f ) ? config->reverse_angle       : DEFAULT_REVERSE_ANGLE;
+    if (jam == NULL)
+        return NULL;
 
+    memset(jam, 0, sizeof(JamDetectorInstance));
+    jam->current_threshold = (config != NULL && config->current_threshold > 0.0f)
+                                 ? config->current_threshold
+                                 : DEFAULT_CURRENT_THRESHOLD;
+    jam->suspect_timeout_ms = (config != NULL && config->suspect_timeout_ms > 0.0f)
+                                  ? config->suspect_timeout_ms
+                                  : DEFAULT_SUSPECT_TIMEOUT_MS;
+    jam->handling_timeout_ms = (config != NULL && config->handling_timeout_ms > 0.0f)
+                                   ? config->handling_timeout_ms
+                                   : DEFAULT_HANDLING_TIMEOUT_MS;
+    jam->reverse_angle = (config != NULL && config->reverse_angle > 0.0f)
+                             ? config->reverse_angle
+                             : DEFAULT_REVERSE_ANGLE;
+    jam->speed_threshold = (config != NULL && config->speed_threshold > 0.0f)
+                               ? config->speed_threshold
+                               : DEFAULT_SPEED_THRESHOLD;
+    jam->min_angle_error = (config != NULL && config->min_angle_error > 0.0f)
+                               ? config->min_angle_error
+                               : DEFAULT_MIN_ANGLE_ERROR;
+    jam->min_speed_reference = (config != NULL && config->min_speed_reference > 0.0f)
+                                   ? config->min_speed_reference
+                                   : DEFAULT_MIN_SPEED_REFERENCE;
     jam->motor = motor;
     jam->state = JAM_NORMAL;
 
@@ -48,13 +70,35 @@ JamDetectorInstance *JamDetectorInit(JamDetector_Init_Config_s *config, DJIMotor
  */
 JamState_e JamDetectorTask(JamDetectorInstance *jam)
 {
-    float now = DWT_GetTimeline_ms();
-    float abs_current=fabsf((float)jam->motor->measure.real_current);
+    float now;
+    float abs_current;
+    float angle_error;
+    uint8_t angle_control_active;
+    uint8_t speed_control_active;
+    uint8_t jam_condition;
+
+    if (jam == NULL || jam->motor == NULL)
+        return JAM_NORMAL;
+
+    now = DWT_GetTimeline_ms();
+    abs_current = fabsf((float)jam->motor->measure.real_current);
+    angle_error = fabsf(jam->motor->motor_controller.pid_ref -
+                        jam->motor->measure.total_angle);
+    angle_control_active =
+        (jam->motor->motor_settings.outer_loop_type == ANGLE_LOOP) &&
+        (angle_error > jam->min_angle_error);
+    speed_control_active =
+        (jam->motor->motor_settings.outer_loop_type == SPEED_LOOP) &&
+        (fabsf(jam->motor->motor_controller.pid_ref) > jam->min_speed_reference);
+    jam_condition =
+        (angle_control_active || speed_control_active) &&
+        (abs_current > jam->current_threshold) &&
+        (fabsf(jam->motor->measure.speed_aps) < jam->speed_threshold);
 
     switch (jam->state)
     {
     case JAM_NORMAL:
-        if(abs_current>jam->current_threshold)
+        if (jam_condition)
         {
             jam->state = JAM_SUSPECT;
             jam->suspect_entry_time = now;
@@ -62,10 +106,9 @@ JamState_e JamDetectorTask(JamDetectorInstance *jam)
         break;
 
     case JAM_SUSPECT:
-
-        if(abs_current <= jam->current_threshold)
+        if (!jam_condition)
         {
-            jam->state=JAM_NORMAL;
+            jam->state = JAM_NORMAL;
         }
         else if ((now-jam->suspect_entry_time) > jam->suspect_timeout_ms)
         {
@@ -73,8 +116,7 @@ JamState_e JamDetectorTask(JamDetectorInstance *jam)
         }
         break;
 
-        case JAM_CONFIRMED:
-
+    case JAM_CONFIRMED:
         jam->handling_target_angle = jam->motor->measure.total_angle - jam->reverse_angle;
         DJIMotorOuterLoop(jam->motor, ANGLE_LOOP);
         DJIMotorSetRef(jam->motor, jam->handling_target_angle);
@@ -83,12 +125,11 @@ JamState_e JamDetectorTask(JamDetectorInstance *jam)
         jam->state = JAM_HANDLING;
         break;
 
-        case JAM_HANDLING:
-
+    case JAM_HANDLING:
         DJIMotorOuterLoop(jam->motor, ANGLE_LOOP);
         DJIMotorSetRef(jam->motor, jam->handling_target_angle);
         if ((fabsf(jam->motor->measure.total_angle - jam->handling_target_angle) <= JAM_ANGLE_TOLERANCE &&
-             fabsf(jam->motor->measure.speed_aps) <= JAM_SPEED_TOLERANCE) ||
+             fabsf(jam->motor->measure.speed_aps) <= JAM_HANDLING_SPEED_TOLERANCE) ||
             (now - jam->handling_entry_time) > jam->handling_timeout_ms)
         {
             jam->state = JAM_NORMAL;
@@ -108,6 +149,11 @@ JamState_e JamDetectorTask(JamDetectorInstance *jam)
  */
 void JamDetectorReset(JamDetectorInstance *jam)
 {
+    if (jam == NULL || jam->motor == NULL)
+        return;
+
     jam->state = JAM_NORMAL;
+    jam->suspect_entry_time = 0.0f;
+    jam->handling_entry_time = 0.0f;
     jam->handling_target_angle = jam->motor->measure.total_angle;
 }

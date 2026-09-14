@@ -12,6 +12,8 @@
  * NORMAL ──(电流超阈值)──> SUSPECT ──(超时)──> CONFIRMED ──(回退固定角度)──> HANDLING ──(到位/超时)──> NORMAL
  *   ↑                         │                      ↑                        │
  *   └─────────(电流恢复正常)───┘                      └────────────────────────┘
+ *
+ * 角度环根据目标角度误差检测,速度环根据速度指令检测.
  */
 typedef enum
 {
@@ -29,12 +31,15 @@ typedef enum
  */
 typedef struct
 {
-    float current_threshold; //电流阈值，即CAN原始值
-    float suspect_timeout_ms; //嫌疑状态超时时间（ms）
-    float handling_timeout_ms; //处理状态超时时间（ms）
-    float reverse_angle; //卡弹处理时回退角度（电机轴，度）
+    float current_threshold; // 电流阈值，即CAN原始值
+    float suspect_timeout_ms; // 嫌疑状态超时时间（ms）
+    float handling_timeout_ms; // 处理状态超时时间（ms）
+    float reverse_angle; // 卡弹处理时回退角度（电机轴，度）
+    float speed_threshold; // 判定卡弹时允许的最大电机轴速度（度/秒）
+    float min_angle_error; // 判定卡弹时要求的最小角度误差（电机轴，度）
+    float min_speed_reference; // 速度环判定动作有效的最小速度指令（度/秒）
 
-}JamDetector_Init_Config_s;
+} JamDetector_Init_Config_s;
 
 
 /**
@@ -45,19 +50,22 @@ typedef struct
  */
 typedef struct
 {
-    JamState_e state; //当前状态
-    float suspect_entry_time; //进入嫌疑状态时的时间戳（ms）
-    float handling_entry_time; //进入处理状态时的时间戳（ms）
+    JamState_e state; // 当前状态
+    float suspect_entry_time; // 进入嫌疑状态时的时间戳（ms）
+    float handling_entry_time; // 进入处理状态时的时间戳（ms）
 
-    float current_threshold;  //参数副本
+    float current_threshold; // 参数副本
     float suspect_timeout_ms;
     float handling_timeout_ms;
     float reverse_angle;
-    float handling_target_angle; //卡弹处理目标角度（电机轴，度）
+    float speed_threshold;
+    float min_angle_error;
+    float min_speed_reference;
+    float handling_target_angle; // 卡弹处理目标角度（电机轴，度）
 
-     DJIMotorInstance *motor; //拨盘电机实例指针
+    DJIMotorInstance *motor; // 拨盘电机实例指针
 
-}JamDetectorInstance;
+} JamDetectorInstance;
 
 /**
  * @brief 初始化卡弹检测器

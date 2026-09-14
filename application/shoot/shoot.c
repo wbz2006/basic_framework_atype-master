@@ -3,6 +3,7 @@
 
 #include "math.h"
 #include "dji_motor.h"
+#include "jam_detector.h"
 #include "message_center.h"
 #include "bsp_dwt.h"
 #include "general_def.h"
@@ -15,6 +16,7 @@ static Publisher_t *shoot_pub;
 static Shoot_Ctrl_Cmd_s shoot_cmd_recv; // 来自cmd的发射控制信息
 static Subscriber_t *shoot_sub;
 static Shoot_Upload_Data_s shoot_feedback_data; // 来自cmd的发射控制信息
+static JamDetectorInstance *loader_jam;
 
 // dwt定时,计算冷却用
 static float loader_target_angle = 0;
@@ -104,6 +106,18 @@ void ShootInit()
     };
     loader = DJIMotorInit(&loader_config);
 
+    JamDetector_Init_Config_s jam_config = {
+        .current_threshold = 3000.0f,
+        .suspect_timeout_ms = 150.0f,
+        .handling_timeout_ms = 800.0f,
+        // 回退一发拨盘角度, LOADER_ONE_BULLET_MOTOR_ANGLE 已包含减速比
+        .reverse_angle = LOADER_ONE_BULLET_MOTOR_ANGLE,
+        .speed_threshold = 200.0f,
+        .min_angle_error = 100.0f,
+        .min_speed_reference = 100.0f,
+    };
+    loader_jam = JamDetectorInit(&jam_config, loader);
+
     shoot_pub = PubRegister("shoot_feed", sizeof(Shoot_Upload_Data_s));
     shoot_sub = SubRegister("shoot_cmd", sizeof(Shoot_Ctrl_Cmd_s));
 }
@@ -112,16 +126,27 @@ void ShootInit()
 void ShootTask()
 {
     static loader_mode_e last_load_mode = LOAD_STOP;
+    static uint8_t jam_handling_active = 0;
+    static uint8_t jam_rearm_required = 0;
     uint8_t loader_busy =
         (last_load_mode == LOAD_1_BULLET || last_load_mode == LOAD_3_BULLET) &&
         fabsf(loader->measure.total_angle - loader_target_angle) > LOADER_ANGLE_TOLERANCE;
+    uint8_t jam_detection_active;
+    JamState_e jam_state = JAM_NORMAL;
 
     // 从cmd获取控制数据
     SubGetMessage(shoot_sub, &shoot_cmd_recv);
+    jam_detection_active =
+        loader_busy ||
+        (shoot_cmd_recv.load_mode == LOAD_BURSTFIRE) ||
+        jam_handling_active;
 
     // 对shoot mode等于SHOOT_STOP的情况特殊处理,直接停止所有电机(紧急停止)
     if (shoot_cmd_recv.shoot_mode == SHOOT_OFF)
     {
+        JamDetectorReset(loader_jam);
+        jam_handling_active = 0;
+        jam_rearm_required = 0;
         DJIMotorStop(friction_l);
         DJIMotorStop(friction_r);
         DJIMotorStop(loader);
@@ -134,13 +159,51 @@ void ShootTask()
         DJIMotorEnable(loader);
     }
 
+    if (shoot_cmd_recv.shoot_mode != SHOOT_OFF &&
+        loader_jam != NULL &&
+        jam_detection_active)
+    {
+        jam_state = JamDetectorTask(loader_jam);
+        if (jam_state == JAM_CONFIRMED || jam_state == JAM_HANDLING)
+        {
+            jam_handling_active = 1;
+            jam_rearm_required = 1;
+        }
+        else if (jam_handling_active && jam_state == JAM_NORMAL)
+        {
+            // 卡弹回退完成,取消本次发射,等待下一次鼠标点击
+            jam_handling_active = 0;
+            jam_rearm_required = 1;
+            last_load_mode = LOAD_STOP;
+            loader_target_angle = loader->measure.total_angle;
+            JamDetectorReset(loader_jam);
+            loader_busy = 0;
+        }
+    }
+    else if (loader_jam != NULL)
+    {
+        JamDetectorReset(loader_jam);
+        jam_handling_active = 0;
+    }
+
+    // 卡弹处理完成后,必须先收到一次停止指令,再允许下一次单发或三连发
+    if (!jam_handling_active &&
+        jam_rearm_required &&
+        shoot_cmd_recv.load_mode == LOAD_STOP)
+    {
+        jam_rearm_required = 0;
+    }
+
     // 如果上一次触发单发或3发指令的时间加上不应期仍然大于当前时间(尚未休眠完毕),直接返回即可
     // 单发模式主要提供给能量机关激活使用(以及英雄的射击大部分处于单发)
     // if (hibernate_time + dead_time > DWT_GetTimeline_ms())
     //     return;
 
     // 单发或三发执行期间锁存拨盘动作,不受鼠标松开产生的LOAD_STOP影响
-    if (!(loader_busy &&
+    if (shoot_cmd_recv.shoot_mode != SHOOT_OFF &&
+        !jam_handling_active &&
+        !jam_rearm_required &&
+        !(loader_busy &&
           (last_load_mode == LOAD_1_BULLET || last_load_mode == LOAD_3_BULLET)))
     {
         // 若不在休眠状态,根据robotCMD传来的控制模式进行拨盘电机参考值设定和模式切换
@@ -189,8 +252,10 @@ void ShootTask()
                 ; // 未知模式,停止运行,检查指针越界,内存溢出等问题
         }
     }
-    if (!loader_busy)
+    if (shoot_cmd_recv.shoot_mode != SHOOT_OFF && !loader_busy)
         last_load_mode = shoot_cmd_recv.load_mode;
+    else if (shoot_cmd_recv.shoot_mode == SHOOT_OFF)
+        last_load_mode = LOAD_STOP;
 
     // 确定是否开启摩擦轮,后续可能修改为键鼠模式下始终开启摩擦轮(上场时建议一直开启)
     if (shoot_cmd_recv.friction_mode == FRICTION_ON)
