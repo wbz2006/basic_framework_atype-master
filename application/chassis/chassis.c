@@ -17,6 +17,7 @@
 #include "super_cap.h"
 #include "message_center.h"
 #include "referee_task.h"
+#include "heat_control.h"
 
 #include <math.h>
 #include "general_def.h"
@@ -42,6 +43,9 @@ attitude_t *Chassis_IMU_data;
 #ifdef ONE_BOARD
 static Publisher_t *chassis_pub;                    // 用于发布底盘的数据
 static Subscriber_t *chassis_sub;                   // 用于订阅底盘的控制命令
+static Publisher_t *heat_data_pub;                  // 用于发布裁判热量数据
+static uint32_t heat_publish_dwt_cnt;
+static float heat_publish_elapsed;
 #endif                                              // !ONE_BOARD
 static Chassis_Ctrl_Cmd_s chassis_cmd_recv;         // 底盘接收到的控制命令
 static Chassis_Upload_Data_s chassis_feedback_data; // 底盘回传的反馈数据
@@ -141,6 +145,8 @@ void ChassisInit()
 #ifdef ONE_BOARD // 单板控制整车,则通过pubsub来传递消息
     chassis_sub = SubRegister("chassis_cmd", sizeof(Chassis_Ctrl_Cmd_s));
     chassis_pub = PubRegister("chassis_feed", sizeof(Chassis_Upload_Data_s));
+    heat_data_pub = PubRegister(HEAT_CONTROL_DATA_TOPIC, sizeof(HeatControlData_s));
+    DWT_GetDeltaT(&heat_publish_dwt_cnt);
 #endif // ONE_BOARD
 }
 
@@ -283,12 +289,28 @@ void ChassisTask()
     // 根据电机的反馈速度和IMU(如果有)计算真实速度
     EstimateSpeed();
 
-    // // 获取裁判系统数据   建议将裁判系统与底盘分离，所以此处数据应使用消息中心发送
+    // 获取裁判系统数据。热量数据按裁判系统10 Hz结算频率独立发布。
     // // 我方颜色id小于7是红色,大于7是蓝色,注意这里发送的是对方的颜色, 0:blue , 1:red
     // chassis_feedback_data.enemy_color = referee_data->GameRobotState.robot_id > 7 ? 1 : 0;
-    // // 当前只做了17mm热量的数据获取,后续根据robot_def中的宏切换双枪管和英雄42mm的情况
-    // chassis_feedback_data.bullet_speed = referee_data->GameRobotState.shooter_id1_17mm_speed_limit;
-    // chassis_feedback_data.rest_heat = referee_data->PowerHeatData.shooter_heat0;
+#ifdef ONE_BOARD
+    heat_publish_elapsed += DWT_GetDeltaT(&heat_publish_dwt_cnt);
+    if (heat_publish_elapsed >= HEAT_CONTROL_SETTLE_PERIOD_S)
+    {
+        HeatControlData_s heat_data = {
+            .current_heat = referee_data->PowerHeatData.shooter_17mm_1_barrel_heat,
+            .heat_limit = referee_data->GameRobotState.shooter_barrel_heat_limit,
+            .cooling_rate = referee_data->GameRobotState.shooter_barrel_cooling_value,
+            .valid = (RefereeIsOnline() &&
+                      referee_data->GameRobotState.shooter_barrel_heat_limit > 0U &&
+                      referee_data->GameRobotState.shooter_barrel_cooling_value > 0U),
+        };
+        do
+        {
+            heat_publish_elapsed -= HEAT_CONTROL_SETTLE_PERIOD_S;
+        } while (heat_publish_elapsed >= HEAT_CONTROL_SETTLE_PERIOD_S);
+        PubPushMessage(heat_data_pub, (void *)&heat_data);
+    }
+#endif
 
     // 推送反馈消息
 #ifdef ONE_BOARD

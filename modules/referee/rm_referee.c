@@ -138,6 +138,11 @@ referee_info_t *RefereeInit(UART_HandleTypeDef *referee_usart_handle)
 	return &referee_info;
 }
 
+uint8_t RefereeIsOnline(void)
+{
+	return referee_daemon != NULL && DaemonIsOnline(referee_daemon);
+}
+
 /**
  * @brief 裁判系统数据发送函数
  * @param

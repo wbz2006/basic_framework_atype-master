@@ -10,6 +10,7 @@
 #include "general_def.h"
 #include "dji_motor.h"
 #include "user_lib.h"
+#include "heat_control.h"
 // bsp
 #include "bsp_dwt.h"
 #include "bsp_log.h"
@@ -17,6 +18,7 @@
 // 私有宏,自动将编码器转换成角度值
 #define YAW_ALIGN_ANGLE (YAW_CHASSIS_ALIGN_ECD * ECD_ANGLE_COEF_DJI) // 对齐时的角度,0-360
 #define PTICH_HORIZON_ANGLE (PITCH_HORIZON_ECD * ECD_ANGLE_COEF_DJI) // pitch水平时电机的角度,0-360
+#define YAW_MAX_TRACK_ERROR 60.0f
 
 /* cmd应用包含的模块实例指针和交互信息存储*/
 #ifdef GIMBAL_BOARD // 对双板的兼容,条件编译
@@ -45,6 +47,7 @@ static Publisher_t *shoot_cmd_pub;           // 发射控制消息发布者
 static Subscriber_t *shoot_feed_sub;         // 发射反馈信息订阅者
 static Shoot_Ctrl_Cmd_s shoot_cmd_send;      // 传递给发射的控制信息
 static Shoot_Upload_Data_s shoot_fetch_data; // 从发射获取的反馈信息
+static HeatControlInstance heat_control;
 
 static Robot_Status_e robot_state; // 机器人整体工作状态
 
@@ -59,6 +62,11 @@ void RobotCMDInit()
     gimbal_feed_sub = SubRegister("gimbal_feed", sizeof(Gimbal_Upload_Data_s));
     shoot_cmd_pub = PubRegister("shoot_cmd", sizeof(Shoot_Ctrl_Cmd_s));
     shoot_feed_sub = SubRegister("shoot_feed", sizeof(Shoot_Upload_Data_s));
+    HeatControl_Init_Config_s heat_config = {
+        .bullet_heat = HEAT_CONTROL_DEFAULT_BULLET_HEAT,
+        .max_shoot_rate = HEAT_CONTROL_DEFAULT_MAX_RATE,
+    };
+    HeatControlInit(&heat_control, &heat_config);
 
 #ifdef ONE_BOARD // 双板兼容
     chassis_cmd_pub = PubRegister("chassis_cmd", sizeof(Chassis_Ctrl_Cmd_s));
@@ -160,8 +168,6 @@ static void RemoteControlSet()
         shoot_cmd_send.load_mode = LOAD_BURSTFIRE;
     else
         shoot_cmd_send.load_mode = LOAD_STOP;
-    // 射频控制,固定每秒1发,后续可以根据左侧拨轮的值大小切换射频,
-    shoot_cmd_send.shoot_rate = 8;
 }
 
 /**
@@ -357,7 +363,22 @@ static void VideoTransmissionControlSet()
 
         break;
     }
-    shoot_cmd_send.shoot_rate = 8;
+}
+static void GimbalCommandLimit()
+{
+    float yaw_feedback = gimbal_fetch_data.gimbal_imu_data.YawTotalAngle;
+    float yaw_error = gimbal_cmd_send.yaw - yaw_feedback;
+
+    yaw_error = float_constrain(yaw_error,
+                                -YAW_MAX_TRACK_ERROR,
+                                 YAW_MAX_TRACK_ERROR);
+
+    gimbal_cmd_send.yaw = yaw_feedback + yaw_error;
+
+    gimbal_cmd_send.pitch =
+        float_constrain(gimbal_cmd_send.pitch,
+                        PITCH_MIN_ANGLE,
+                        PITCH_MAX_ANGLE);
 }
 
 /**
@@ -412,8 +433,16 @@ void RobotCMDTask()
         VideoTransmissionControlSet();
 
     GimbalAngleLimit(); // 对云台角度进行软件限位,防止超出机械边界
+    GimbalCommandLimit();
 
     EmergencyHandler(); // 处理模块离线和遥控器急停等紧急情况
+
+    /* 热量按裁判系统 10 Hz 结算，模块内部从消息中心读取最新热量数据。 */
+    shoot_cmd_send.shoot_rate = HeatControlCalculate(
+        &heat_control,
+        shoot_cmd_send.shoot_mode == SHOOT_ON &&
+            shoot_cmd_send.friction_mode == FRICTION_ON &&
+            shoot_cmd_send.load_mode == LOAD_BURSTFIRE);
 
     // 设置视觉发送数据,还需增加加速度和角速度数据
     // VisionSetFlag(chassis_fetch_data.enemy_color,,chassis_fetch_data.bullet_speed)
