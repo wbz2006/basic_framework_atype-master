@@ -301,8 +301,7 @@ void ChassisTask()
             .heat_limit = referee_data->GameRobotState.shooter_barrel_heat_limit,
             .cooling_rate = referee_data->GameRobotState.shooter_barrel_cooling_value,
             .valid = (RefereeIsOnline() &&
-                      referee_data->GameRobotState.shooter_barrel_heat_limit > 0U &&
-                      referee_data->GameRobotState.shooter_barrel_cooling_value > 0U),
+                      referee_data->GameRobotState.shooter_barrel_heat_limit > 0U),
         };
         do
         {

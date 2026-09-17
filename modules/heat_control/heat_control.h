@@ -7,9 +7,10 @@
 /* 裁判系统热量数据主题，由底盘应用发布，热量控制模块订阅。 */
 #define HEAT_CONTROL_DATA_TOPIC "heat_control_data"
 
-/* 2026 规则：17 mm 弹丸每发增加 10 点热量。 */
-#define HEAT_CONTROL_DEFAULT_BULLET_HEAT 10.0f
+/* 单发热量统一配置入口；当前裁判系统配置为 2 点。 */
+#define HEAT_CONTROL_BULLET_HEAT 2.0f
 #define HEAT_CONTROL_DEFAULT_MAX_RATE 30.0f
+#define HEAT_CONTROL_RESERVE_SHOTS 3.0f
 #define HEAT_CONTROL_SETTLE_PERIOD_S 0.1f /* 裁判系统按 10 Hz 结算冷却 */
 
 /**
@@ -36,17 +37,16 @@ typedef struct
 /** 热量控制实例。 */
 typedef struct
 {
-    float shoot_time;      /* 当前连续发射时长，单位 s */
-    float burst_time;      /* 爆发阶段时长，单位 s */
     float shoot_speed;     /* 目标射速，单位 发/s */
     float current_heat;    /* Q1 */
     float heat_limit;      /* Q0 */
-    float cooling_rate;    /* 热量/s */
+    float cooling_rate;    /* 热量冷却速度/s */
     float bullet_heat;     /* 热量/发 */
     float max_shoot_rate;  /* 物理射速上限，单位 发/s */
     float settle_elapsed;  /* 距离下一次 10 Hz 结算的时间 */
     uint32_t dwt_cnt;      /* 实例独立的 DWT 时间戳 */
     uint8_t data_valid;
+    uint8_t was_firing;    /* 上一次调用是否处于连射，用于进入连射时立即结算 */
     Subscriber_t *data_sub;
 } HeatControlInstance;
 
@@ -58,7 +58,7 @@ typedef struct
 void HeatControlInit(HeatControlInstance *instance, const HeatControl_Init_Config_s *config);
 
 /**
- * @brief 重置爆发阶段和 10 Hz 结算计时。
+ * @brief 重置射频输出和 10 Hz 结算计时。
  * @param instance 热量控制实例
  */
 void HeatControlReset(HeatControlInstance *instance);
