@@ -1,3 +1,11 @@
+/**
+ * @file dmmotor.c
+ * @brief 达妙 DM4310 电机驱动实现。
+ *
+ * @details
+ * 本文件实现 DM4310 的 CAN 反馈解析、MIT 报文打包、外部多环 PID 控制和
+ * 直接 MIT 控制两种周期控制入口。
+ */
 #include "dmmotor.h"
 
 #include "bsp_log.h"
@@ -11,6 +19,15 @@
 static uint8_t idx;
 static DMMotorInstance *dm_motor_instance[DM_MOTOR_CNT];
 
+/**
+ * @brief 将浮点物理量映射为无符号整数编码。
+ *
+ * @param x 待编码物理量。
+ * @param x_min 物理量下限。
+ * @param x_max 物理量上限。
+ * @param bits 编码位宽。
+ * @return 编码后的无符号整数。
+ */
 static uint16_t float_to_uint(
     float x,
     float x_min,
@@ -20,11 +37,18 @@ static uint16_t float_to_uint(
     const float span = x_max - x_min;
     const float offset = x_min;
 
-    return (uint16_t)((x - offset) *
-                      ((float)((1U << bits) - 1U)) /
-                      span);
+    return (uint16_t)((x - offset) * ((float)((1U << bits) - 1U)) / span);
 }
 
+/**
+ * @brief 将无符号整数编码还原为浮点物理量。
+ *
+ * @param x_int 编码值。
+ * @param x_min 物理量下限。
+ * @param x_max 物理量上限。
+ * @param bits 编码位宽。
+ * @return 解码后的物理量。
+ */
 static float uint_to_float(
     int x_int,
     float x_min,
@@ -34,11 +58,17 @@ static float uint_to_float(
     const float span = x_max - x_min;
     const float offset = x_min;
 
-    return ((float)x_int) * span /
-               ((float)((1U << bits) - 1U)) +
-           offset;
+    return ((float)x_int) * span / ((float)((1U << bits) - 1U)) + offset;
 }
 
+/**
+ * @brief 发送达妙电机模式命令。
+ *
+ * @param cmd 模式命令字。
+ * @param motor 电机实例。
+ *
+ * @note 模式命令格式为前 7 字节 0xff，第 8 字节为命令字。
+ */
 static void DMMotorSetMode(DMMotor_Mode_e cmd, DMMotorInstance *motor)
 {
     memset(motor->motor_can_instace->tx_buff, 0xff, 7);
@@ -46,6 +76,13 @@ static void DMMotorSetMode(DMMotor_Mode_e cmd, DMMotorInstance *motor)
     CANTransmit(motor->motor_can_instace, 1);
 }
 
+/**
+ * @brief 解析达妙电机 CAN 反馈。
+ *
+ * @param motor_can 触发回调的 CAN 实例。
+ *
+ * @note 收到反馈后会刷新 daemon 离线计数。
+ */
 static void DMMotorDecode(CANInstance *motor_can)
 {
     uint16_t tmp;
@@ -70,18 +107,29 @@ static void DMMotorDecode(CANInstance *motor_can)
     measure->T_Rotor = (float)rxbuff[7];
 }
 
+/**
+ * @brief 达妙电机反馈超时回调。
+ *
+ * @param motor_ptr 电机实例指针，类型为 DMMotorInstance*。
+ *
+ * @note 回调只清零参考并置停止标志，实际全零 MIT 报文由周期控制函数发送。
+ */
 static void DMMotorLostCallback(void *motor_ptr)
 {
     DMMotorInstance *motor = (DMMotorInstance *)motor_ptr;
-
-    /*
-     * Keep the callback conservative. The periodic control function will
-     * transmit a zero command after the stop flag is set.
-     */
     motor->pid_ref = 0.0f;
     motor->stop_flag = MOTOR_STOP;
 }
 
+/**
+ * @brief 获取角度环反馈值。
+ *
+ * @param motor 电机实例。
+ * @param setting 电机控制设置。
+ * @return 当前角度反馈值。
+ *
+ * @note 当角度反馈源为 OTHER_FEED 且外部指针有效时使用外部反馈，否则使用电机位置反馈。
+ */
 static float DMMotorGetAngleMeasure(
     DMMotorInstance *motor,
     Motor_Control_Setting_s *setting)
@@ -95,6 +143,15 @@ static float DMMotorGetAngleMeasure(
     return motor->measure.position;
 }
 
+/**
+ * @brief 获取速度环反馈值。
+ *
+ * @param motor 电机实例。
+ * @param setting 电机控制设置。
+ * @return 当前速度反馈值。
+ *
+ * @note 当速度反馈源为 OTHER_FEED 且外部指针有效时使用外部反馈，否则使用电机速度反馈。
+ */
 static float DMMotorGetSpeedMeasure(
     DMMotorInstance *motor,
     Motor_Control_Setting_s *setting)
@@ -108,6 +165,16 @@ static float DMMotorGetSpeedMeasure(
     return motor->measure.velocity;
 }
 
+/**
+ * @brief 计算外部多环 PID 的最终输出。
+ *
+ * @param motor 电机实例。
+ * @return 外部角度/速度/力矩链路计算后的力矩目标。
+ *
+ * @details
+ * pid_ref 作为外环目标，按配置依次经过角度环、速度环和力矩/电流环。
+ * 该输出在 DMMotorControl() 中作为 MIT 报文 torque 字段的主体。
+ */
 static float DMMotorCalculateExternalOutput(DMMotorInstance *motor)
 {
     float pid_measure;
@@ -161,6 +228,18 @@ static float DMMotorCalculateExternalOutput(DMMotorInstance *motor)
     return pid_ref;
 }
 
+/**
+ * @brief 发送 MIT 控制报文。
+ *
+ * @param motor 电机实例。
+ * @param position_des 电机轴目标位置，单位 rad。
+ * @param velocity_des 电机轴目标速度，单位 rad/s。
+ * @param kp MIT 位置刚度。
+ * @param kd MIT 速度阻尼。
+ * @param torque_des 力矩目标/前馈，单位 N*m。
+ *
+ * @note 两种控制模式共用该底层发送函数。停止状态下会强制发送 p/v/Kp/Kd/tau 全零。
+ */
 static void DMMotorSendMIT(
     DMMotorInstance *motor,
     float position_des,
@@ -217,12 +296,23 @@ static void DMMotorSendMIT(
     CANTransmit(motor->motor_can_instace, 1);
 }
 
+/**
+ * @brief 将当前电机位置设为编码器零位。
+ *
+ * @param motor 电机实例。
+ */
 void DMMotorCaliEncoder(DMMotorInstance *motor)
 {
     DMMotorSetMode(DM_CMD_ZERO_POSITION, motor);
     DWT_Delay(0.1);
 }
 
+/**
+ * @brief 注册并初始化达妙电机实例。
+ *
+ * @param config 通用电机初始化配置。
+ * @return 初始化成功返回电机实例指针，失败返回 NULL。
+ */
 DMMotorInstance *DMMotorInit(Motor_Init_Config_s *config)
 {
     DMMotorInstance *motor =
@@ -273,26 +363,57 @@ DMMotorInstance *DMMotorInit(Motor_Init_Config_s *config)
     return motor;
 }
 
+/**
+ * @brief 设置外部多环 PID 的参考输入。
+ *
+ * @param motor 电机实例。
+ * @param ref 参考值，含义由外层闭环类型决定。
+ */
 void DMMotorSetRef(DMMotorInstance *motor, float ref)
 {
     motor->pid_ref = ref;
 }
 
+/**
+ * @brief 使能达妙电机周期控制输出。
+ *
+ * @param motor 电机实例。
+ */
 void DMMotorEnable(DMMotorInstance *motor)
 {
     motor->stop_flag = MOTOR_ENALBED;
 }
 
+/**
+ * @brief 停止达妙电机周期控制输出。
+ *
+ * @param motor 电机实例。
+ *
+ * @note 底层发送函数会在停止状态下发送全零 MIT 报文。
+ */
 void DMMotorStop(DMMotorInstance *motor)
 {
     motor->stop_flag = MOTOR_STOP;
 }
 
+/**
+ * @brief 设置外层闭环类型。
+ *
+ * @param motor 电机实例。
+ * @param close_loop_type 外层闭环类型。
+ */
 void DMMotorOuterLoop(DMMotorInstance *motor, Closeloop_Type_e close_loop_type)
 {
     motor->motor_settings.outer_loop_type = close_loop_type;
 }
 
+/**
+ * @brief 切换外部 PID 闭环使用的反馈来源。
+ *
+ * @param motor 电机实例。
+ * @param loop 需要切换反馈源的闭环，支持 ANGLE_LOOP 或 SPEED_LOOP。
+ * @param type 反馈来源类型。
+ */
 void DMMotorChangeFeed(
     DMMotorInstance *motor,
     Closeloop_Type_e loop,
@@ -312,6 +433,12 @@ void DMMotorChangeFeed(
     }
 }
 
+/**
+ * @brief 配置完整 MIT 控制参数。
+ *
+ * @param motor 电机实例。
+ * @param config MIT 控制参数。
+ */
 void DMMotorSetMITConfig(
     DMMotorInstance *motor,
     const DMMotor_MIT_Config_s *config)
@@ -324,6 +451,16 @@ void DMMotorSetMITConfig(
     motor->mit_config = *config;
 }
 
+/**
+ * @brief 逐参数配置 MIT 控制参数。
+ *
+ * @param motor 电机实例。
+ * @param position_des 电机轴目标位置，单位 rad。
+ * @param velocity_des 电机轴目标速度，单位 rad/s。
+ * @param kp MIT 位置刚度。
+ * @param kd MIT 速度阻尼。
+ * @param torque_ff 力矩前馈，单位 N*m。
+ */
 void DMMotorSetMITRef(
     DMMotorInstance *motor,
     float position_des,
@@ -343,6 +480,13 @@ void DMMotorSetMITRef(
     DMMotorSetMITConfig(motor, &config);
 }
 
+/**
+ * @brief IMU 外部阻抗控制入口。
+ *
+ * @details
+ * 该函数执行外部角度/速度/力矩多环 PID，并强制以
+ * p=0, v=0, Kp=0, Kd=0, torque=PID输出+力矩前馈 的形式发送 MIT 报文。
+ */
 void DMMotorControl(void)
 {
     for (size_t i = 0; i < idx; ++i)
@@ -351,27 +495,23 @@ void DMMotorControl(void)
         const float pid_output = DMMotorCalculateExternalOutput(motor);
         const float torque_des = pid_output + motor->mit_config.torque_des;
 
-        /*
-         * External impedance mode:
-         * the IMU/PID chain owns the control torque, while the DM internal
-         * position and velocity gains remain disabled.
-         */
         DMMotorSendMIT(motor, 0.0f, 0.0f, 0.0f, 0.0f, torque_des);
     }
 }
 
+/**
+ * @brief MIT 内部位置速度环控制入口。
+ *
+ * @details
+ * 该函数直接发送 DMMotorSetMITConfig() 配置的 p/v/Kp/Kd/tau_ff，
+ * 不计算外部 PID，适合应用层已完成 IMU 外环或轨迹规划的场景。
+ */
 void DMMotorMITControl(void)
 {
     for (size_t i = 0; i < idx; ++i)
     {
         DMMotorInstance *motor = dm_motor_instance[i];
 
-        /*
-         * MIT mode:
-         * the application supplies p/v/Kp/Kd/tau_ff through
-         * DMMotorSetMITConfig(), and this function sends them without
-         * calculating the external PID chain.
-         */
         DMMotorSendMIT(
             motor,
             motor->mit_config.position_des,
