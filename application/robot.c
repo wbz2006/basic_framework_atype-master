@@ -2,10 +2,17 @@
 #include "robot.h"
 #include "robot_def.h"
 
+
+#if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
 #include "chassis.h"
+#endif
+
+#if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
 #include "gimbal.h"
 #include "shoot.h"
 #include "robot_cmd.h"
+#endif
+
 
 void RobotInit()
 {  
@@ -15,19 +22,30 @@ void RobotInit()
     __disable_irq();
     
     BSPInit();
-   
+
+#if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
     RobotCMDInit();
     GimbalInit();
-    //ShootInit();
-    //ChassisInit();
+    ShootInit();
+#endif
 
+#if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
+    ChassisInit();
+#endif
+    // 初始化完成,开启中断
     __enable_irq();
 }
 
 void RobotTask()
 {
+#if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
     RobotCMDTask();
     GimbalTask();
-    //ShootTask();
-    //ChassisTask();
+    ShootTask();
+#endif
+
+#if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
+    ChassisTask();
+#endif
+
 }
