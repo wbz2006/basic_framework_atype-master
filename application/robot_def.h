@@ -21,7 +21,7 @@
 // #define CHASSIS_BOARD //底盘板
 // #define GIMBAL_BOARD  //云台板
 
-// 底盘运动学类型和命令方向修正。
+// 底盘运动学类型
 //#define CHASSIS_DRIVE_MECANUM   // 麦克纳姆轮
 #define CHASSIS_DRIVE_OMNI_X   // X 型四全向轮
 
